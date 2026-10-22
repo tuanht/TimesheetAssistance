@@ -206,6 +206,33 @@ struct MCPClientTests {
         }
     }
 
+    @Test func sendsProtocolVersionAfterInitialize() async throws {
+        let sut = client(Self.server { Self.toolResult(id: $0, result: Self.textContent(Self.prJSON)) })
+        _ = try await readPR(sut)
+        let requests = StubProtocol.requests
+        #expect(requests[0].value(forHTTPHeaderField: "MCP-Protocol-Version") == nil)
+        #expect(requests[1].value(forHTTPHeaderField: "MCP-Protocol-Version") == "2025-06-18")
+        #expect(requests[2].value(forHTTPHeaderField: "MCP-Protocol-Version") == "2025-06-18")
+    }
+
+    @Test func sendsProtocolVersionWithoutSession() async throws {
+        let sut = client { method, id in
+            switch method {
+            case "initialize":
+                .response(
+                    status: 200, headers: ["Content-Type": "application/json"],
+                    body: Data(#"{"jsonrpc":"2.0","id":\#(id ?? 0),"result":{"protocolVersion":"2025-06-18","capabilities":{}}}"#.utf8))
+            case "notifications/initialized": Self.accepted
+            default: Self.toolResult(id: id, result: Self.textContent(Self.prJSON))
+            }
+        }
+        _ = try await readPR(sut)
+        let requests = StubProtocol.requests
+        #expect(requests[0].value(forHTTPHeaderField: "MCP-Protocol-Version") == nil)
+        #expect(requests[2].value(forHTTPHeaderField: "Mcp-Session-Id") == nil)
+        #expect(requests[2].value(forHTTPHeaderField: "MCP-Protocol-Version") == "2025-06-18")
+    }
+
     @Test func acceptsEmptyAcceptedNotification() async throws {
         let sut = client(Self.server { Self.toolResult(id: $0, result: Self.textContent(Self.prJSON)) })
         #expect(try await readPR(sut) == Self.prValue)

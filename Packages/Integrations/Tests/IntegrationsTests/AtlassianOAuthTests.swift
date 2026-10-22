@@ -186,6 +186,7 @@ struct AtlassianOAuthTests {
         #"{"authorization_servers":["https://auth.example.com/issuer-test"]}"#,
         #"{"authorization_servers":["http://auth.atlassian.com/issuer-test"]}"#,
         #"{"authorization_servers":["https://atlassian.com.example.net/issuer-test"]}"#,
+        #"{"authorization_servers":["https://acme.atlassian.net/issuer-test"]}"#,
         #"{"authorization_servers":[]}"#,
     ])
     func rejectsForeignIssuer(resource: String) async {
@@ -203,6 +204,7 @@ struct AtlassianOAuthTests {
         metadata(authorization: "https://user:pw@auth.atlassian.com/authorize"),
         metadata(token: "https://example.com/oauth/token"),
         metadata(token: "http://auth.atlassian.com/oauth/token"),
+        metadata(token: "https://acme.atlassian.net/oauth/token"),
     ])
     func rejectsForeignAuthorizationHost(metadata: (status: Int, body: String)) async {
         let store = MemoryTokenStore()

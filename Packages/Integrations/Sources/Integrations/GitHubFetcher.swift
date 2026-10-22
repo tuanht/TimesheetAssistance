@@ -13,21 +13,30 @@ public struct GitHubFetcher: ContextFetcher {
         guard case .pullRequest(let owner, let repo, let number) = reference else {
             throw ContextError.unexpectedReply(.github)
         }
-        let result: JSONValue
+        let result = try await call("pull_request_read", arguments: [
+            "method": .string("get"),
+            "owner": .string(owner),
+            "repo": .string(repo),
+            "pullNumber": .number(Double(number)),
+        ], reference: reference)
+        return try Self.source(from: result.decodedIfString, reference: reference)
+    }
+
+    /// The signed-in account, for Settings' Test.
+    public func me() async throws -> JSONValue {
+        try await call("get_me", arguments: [:], reference: nil).decodedIfString
+    }
+
+    private func call(_ name: String, arguments: [String: JSONValue], reference: ContextReference?) async throws -> JSONValue {
         do {
-            result = try await tools.callTool("pull_request_read", arguments: [
-                "method": .string("get"),
-                "owner": .string(owner),
-                "repo": .string(repo),
-                "pullNumber": .number(Double(number)),
-            ])
+            return try await tools.callTool(name, arguments: arguments)
         } catch let error as MCPToolError {
             // The raw message may hold PR text: classify it, never pass it on.
-            throw error.message.lowercased().contains("404 not found")
-                ? ContextError.notFound(reference.canonical)
-                : ContextError.unexpectedReply(.github)
+            if let reference, error.message.lowercased().contains("404 not found") {
+                throw ContextError.notFound(reference.canonical)
+            }
+            throw ContextError.unexpectedReply(.github)
         }
-        return try Self.source(from: result.decodedIfString, reference: reference)
     }
 
     static func source(from pr: JSONValue, reference: ContextReference) throws -> FetchedSource {

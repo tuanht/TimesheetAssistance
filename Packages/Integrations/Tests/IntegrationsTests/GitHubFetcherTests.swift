@@ -107,4 +107,25 @@ struct GitHubFetcherTests {
             }
         }
     }
+
+    @Test func githubMeCallsTool() async throws {
+        let tools = try FakeTools(json: #"{"login":"octo","name":"Octo Cat"}"#)
+        let me = try await GitHubFetcher(tools: tools).me()
+        #expect(me["login"] == .string("octo"))
+        #expect(await tools.calls == [FakeTools.Call(name: "get_me", arguments: [:])])
+    }
+
+    @Test func githubMeToolErrorIsUnexpected() async throws {
+        let tools = FakeTools(throwing: MCPToolError(message: "failed to get user: 404 Not Found []"))
+        await #expect(throws: ContextError.unexpectedReply(.github)) {
+            try await GitHubFetcher(tools: tools).me()
+        }
+    }
+
+    @Test func githubMePassesClientErrorsThrough() async throws {
+        let tools = FakeTools(throwing: ContextError.notApproved(.github))
+        await #expect(throws: ContextError.notApproved(.github)) {
+            try await GitHubFetcher(tools: tools).me()
+        }
+    }
 }

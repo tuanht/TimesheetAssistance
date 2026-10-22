@@ -125,4 +125,25 @@ struct JiraFetcherTests {
             try await fetcher(tools).sites()
         }
     }
+
+    @Test func jiraUserInfoCallsTool() async throws {
+        let tools = try FakeTools(json: #"{"account_id":"acct-1","name":"Test User","email":"user@example.com"}"#)
+        let me = try await fetcher(tools).userInfo()
+        #expect(me["name"] == .string("Test User"))
+        #expect(await tools.calls == [FakeTools.Call(name: "atlassianUserInfo", arguments: [:])])
+    }
+
+    @Test func jiraUserInfoToolNotFoundIsNotApproved() async throws {
+        let tools = FakeTools(throwing: MCPToolError(message: "MCP error -32602: Tool atlassianUserInfo not found"))
+        await #expect(throws: ContextError.notApproved(.jira)) {
+            try await fetcher(tools).userInfo()
+        }
+    }
+
+    @Test func jiraUserInfoOtherToolErrorIsUnexpected() async throws {
+        let tools = FakeTools(throwing: MCPToolError(message: "Request failed with status 404"))
+        await #expect(throws: ContextError.unexpectedReply(.jira)) {
+            try await fetcher(tools).userInfo()
+        }
+    }
 }

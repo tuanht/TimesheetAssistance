@@ -19,6 +19,8 @@ public actor MCPClient {
     private let timeout: TimeInterval = 30
     private var nextID = 1
     private var sessionID: String?
+    /// Set once `initialize` succeeds; every later request carries `MCP-Protocol-Version`.
+    private var negotiated = false
     private var initialization: Task<Void, Error>?
 
     public init(server: MCPServer, credentials: any CredentialProvider, session: URLSession? = nil) {
@@ -58,6 +60,7 @@ public actor MCPClient {
     private func resetSession() {
         initialization = nil
         sessionID = nil
+        negotiated = false
     }
 
     // MARK: - Handshake
@@ -77,12 +80,14 @@ public actor MCPClient {
     private func handshake() async throws {
         // `initialize` never carries a session ID; the reply sets the new one.
         sessionID = nil
+        negotiated = false
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev"
         _ = try await request("initialize", params: .object([
             "protocolVersion": .string(Self.protocolVersion),
             "capabilities": .object([:]),
             "clientInfo": .object(["name": .string("TimesheetAssistant"), "version": .string(version)]),
         ]))
+        negotiated = true
         // Servers answer 202 with an empty body.
         _ = try await send(.object(["jsonrpc": .string("2.0"), "method": .string("notifications/initialized")]))
     }
@@ -161,6 +166,8 @@ public actor MCPClient {
         request.setValue("application/json, text/event-stream", forHTTPHeaderField: "Accept")
         if let sessionID {
             request.setValue(sessionID, forHTTPHeaderField: "Mcp-Session-Id")
+        }
+        if negotiated {
             request.setValue(Self.protocolVersion, forHTTPHeaderField: "MCP-Protocol-Version")
         }
         if request.url?.host == server.url.host {

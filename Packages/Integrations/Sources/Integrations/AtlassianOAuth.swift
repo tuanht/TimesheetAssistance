@@ -185,12 +185,12 @@ public struct AtlassianOAuth: Sendable {
 
     // MARK: - Hosts
 
-    /// HTTPS, no credentials in the URL, and an Atlassian host.
+    /// HTTPS, no credentials in the URL, and an Atlassian service host (never a tenant `*.atlassian.net` site).
     static func isAtlassian(_ url: URL) -> Bool {
         guard url.scheme?.lowercased() == "https", url.user() == nil, url.password() == nil,
               let host = url.host(percentEncoded: false)?.lowercased()
         else { return false }
-        return host == "atlassian.com" || host.hasSuffix(".atlassian.com") || host.hasSuffix(".atlassian.net")
+        return host == "atlassian.com" || host.hasSuffix(".atlassian.com")
     }
 
     private static func atlassianURL(_ value: JSONValue?) -> URL? {

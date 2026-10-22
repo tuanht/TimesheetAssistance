@@ -24,6 +24,11 @@ public struct JiraFetcher: ContextFetcher {
         self.siteId = siteId
     }
 
+    /// The signed-in account, for Settings' Test. A restricted toolset maps to `.notApproved(.jira)`.
+    public func userInfo() async throws -> JSONValue {
+        try await call("atlassianUserInfo", arguments: [:], reference: nil).decodedIfString
+    }
+
     public func sites() async throws -> [JiraSite] {
         let result = try await call("getAccessibleAtlassianResources", arguments: [:], reference: nil)
         guard case .array(let items) = result.decodedIfString else { throw ContextError.unexpectedReply(.jira) }
