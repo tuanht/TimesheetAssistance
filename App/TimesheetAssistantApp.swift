@@ -13,7 +13,9 @@ struct TimesheetAssistantApp: App {
     @StateObject private var models = MLXModelManager(directory: Self.modelsDirectory())
 
     var body: some Scene {
-        WindowGroup {
+        // A stable id names the frame-autosave key; without it SwiftUI derives the key from the content
+        // type, whose private modifier carries a per-launch address, so size and position never restore.
+        WindowGroup(id: "main") {
             Group {
                 switch storeLoad {
                 case .ready(let container):
