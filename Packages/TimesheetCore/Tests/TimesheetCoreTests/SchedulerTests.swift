@@ -100,6 +100,26 @@ struct SchedulerTests {
         #expect(slots.map(\.start) == slots.map(\.start).sorted())
     }
 
+    @Test func manyEqualItemsFillDayExactly() {
+        let slots = Scheduler.schedule((0..<12).map { _ in item(1) }, hours: hours)
+        #expect(slots.reduce(0) { $0 + $1.end.minutes - $1.start.minutes } == 450)
+        #expect(slots.last?.end == ClockTime(17, 30))
+    }
+
+    @Test func manyItemsAroundMeetingFillDayExactly() {
+        let items = (0..<8).map { _ in item(1) } + [item(fixed: (ClockTime(10, 0), ClockTime(10, 30)))]
+        let slots = Scheduler.schedule(items, hours: hours)
+        #expect(slots.reduce(0) { $0 + $1.end.minutes - $1.start.minutes } == 450)
+        #expect(slots.last?.end == ClockTime(17, 30))
+    }
+
+    @Test func roundingKeepsSizeOrder() {
+        let small = (0..<7).map { _ in item(2) }, big = item(3)
+        let slots = Scheduler.schedule(small + [big], hours: hours)
+        let bigMinutes = minutes(of: big.entryId, in: slots)
+        for s in small { #expect(bigMinutes >= minutes(of: s.entryId, in: slots)) }
+    }
+
     @Test func zeroHintIsNotDropped() {
         let zero = item(1, hint: 0)
         let slots = Scheduler.schedule([zero, item(1)], hours: hours)

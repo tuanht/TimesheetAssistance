@@ -98,16 +98,17 @@ public enum Scheduler {
         let weightTotal = unhinted.reduce(0) { $0 + max(1, items[$1].estimatedMinutes) }
 
         var result = hints.map { $0 ?? 0 }
-        var given = 0
+        // Snap cumulative boundaries, not each share, so rounding error never accumulates past one unit
+        // and size order holds. Each item keeps a one-unit minimum even if that overflows the day.
+        var cumulativeWeight = 0
+        var previousBoundary = 0
         for (n, i) in unhinted.enumerated() {
-            let raw = Double(max(0, share)) * Double(max(1, items[i].estimatedMinutes)) / Double(weightTotal)
-            var minutes = max(unit, Int((raw / Double(unit)).rounded()) * unit)
-            if n == unhinted.count - 1 {
-                // Remainder lands here so the day totals F; keep the one-unit minimum even if it overflows.
-                minutes = max(unit, share - given)
-            }
-            result[i] = minutes
-            given += minutes
+            cumulativeWeight += max(1, items[i].estimatedMinutes)
+            let exact = Double(max(0, share)) * Double(cumulativeWeight) / Double(weightTotal)
+            let snapped = n == unhinted.count - 1 ? max(0, share) : Int((exact / Double(unit)).rounded()) * unit
+            let boundary = max(snapped, previousBoundary + unit)
+            result[i] = boundary - previousBoundary
+            previousBoundary = boundary
         }
         return result
     }
