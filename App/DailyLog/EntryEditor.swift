@@ -64,7 +64,7 @@ struct EntryEditor: View {
             Text("Text").font(.headline)
             TextEditor(text: $text)
                 .font(.body)
-                .frame(minHeight: 220)
+                .frame(minHeight: 100, idealHeight: 220)
                 .border(.separator)
                 .accessibilityLabel("Entry text")
             contextSection
@@ -81,7 +81,8 @@ struct EntryEditor: View {
             }
         }
         .padding(20)
-        .frame(minWidth: 520, idealWidth: 600, minHeight: 600)
+        // The text boxes shrink first; the main window's minimum height keeps this sheet from being clipped.
+        .frame(minWidth: 520, idealWidth: 600, minHeight: 520, idealHeight: 640)
         // A finished job updates the stored summary; show it unless the user has typed over it.
         .onChange(of: entry?.contextSummary) { _, stored in
             if summary == loadedSummary { summary = stored ?? "" }
@@ -121,7 +122,7 @@ struct EntryEditor: View {
             Text("Context").font(.headline)
             TextEditor(text: $summary)
                 .font(.body)
-                .frame(minHeight: 80)
+                .frame(minHeight: 60, idealHeight: 100)
                 .border(.separator)
                 .accessibilityLabel("Context summary")
             HStack(alignment: .firstTextBaseline) {
