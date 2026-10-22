@@ -8,6 +8,8 @@ struct RootView: View {
     }
 
     @State private var selection: Section? = .dailyLog
+    /// Shared by the daily log and Compile so both work on the same day.
+    @State private var day = Date()
 
     var body: some View {
         NavigationSplitView {
@@ -16,8 +18,13 @@ struct RootView: View {
             }
             .navigationSplitViewColumnWidth(min: 160, ideal: 180)
         } detail: {
-            Text(selection?.rawValue ?? "")
-                .foregroundStyle(.secondary)
+            switch selection {
+            case .dailyLog:
+                DailyLogView(day: $day)
+            case .compile, nil:
+                Text(selection?.rawValue ?? "")
+                    .foregroundStyle(.secondary)
+            }
         }
         .frame(minWidth: 720, minHeight: 440)
     }
