@@ -30,5 +30,21 @@ public enum Store {
         return try context.fetch(descriptor).first
     }
 
+    /// Entries whose dayKey is in `range`, sorted by dayKey then createdAt.
+    public static func entries(in range: DayRange, in context: ModelContext, calendar: Calendar = .current) throws -> [LogEntry] {
+        let keys = range.keys(calendar: calendar)
+        return try context.fetch(FetchDescriptor<LogEntry>(
+            predicate: #Predicate { keys.contains($0.dayKey) },
+            sortBy: [SortDescriptor(\.dayKey), SortDescriptor(\.createdAt)]))
+    }
+
+    /// Saved results for days in `range`, sorted by dayKey.
+    public static func compiled(in range: DayRange, in context: ModelContext, calendar: Calendar = .current) throws -> [CompiledDay] {
+        let keys = range.keys(calendar: calendar)
+        return try context.fetch(FetchDescriptor<CompiledDay>(
+            predicate: #Predicate { keys.contains($0.dayKey) },
+            sortBy: [SortDescriptor(\.dayKey)]))
+    }
+
     private static let schema = Schema([LogEntry.self, CompiledDay.self])
 }

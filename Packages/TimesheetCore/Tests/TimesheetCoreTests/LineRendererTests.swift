@@ -22,6 +22,20 @@ struct LineRendererTests {
         #expect(out == "2026-10-22 | 09:00 | 10:30 | Implement pagination | RSF-1234 | Development | Billable")
     }
 
+    @Test func renderDaysJoinsInOrderSkippingEmpty() {
+        let day3 = day.addingTimeInterval(2 * 86_400)
+        let first = [line(desc: "First day")]
+        let third = [line(desc: "Third day")]
+        let out = LineRenderer.render(days: [
+            (day: day, lines: first),
+            (day: day.addingTimeInterval(86_400), lines: []),
+            (day: day3, lines: third),
+        ], template: .default)
+        #expect(out == LineRenderer.render(first, day: day, template: .default) + "\n"
+            + LineRenderer.render(third, day: day3, template: .default))
+        #expect(!out.contains("\n\n"))
+    }
+
     @Test func timesPastMidnightPrintLiterally() {
         let out = LineRenderer.render([line(ClockTime(23, 45), ClockTime(25, 30))], day: day, template: .default)
         #expect(out.components(separatedBy: " | ")[1...2] == ["23:45", "25:30"])
