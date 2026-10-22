@@ -14,6 +14,10 @@ struct RootView: View {
     @State private var anchor = Date()
     /// Which period the daily log shows around `anchor`.
     @AppStorage("logPeriod") private var logPeriod: PeriodKind = .day
+    /// What Compile works on: a period around `anchor`, or the custom range below.
+    @AppStorage("compileRange") private var compileRange: CompileRangeKind = .day
+    @State private var customStart = Date()
+    @State private var customEnd = Date()
     /// The calendar date that was "today" when last checked, so a day change can move `anchor` along.
     @State private var today = DayKey.string(for: Date())
     @Environment(\.scenePhase) private var scenePhase
@@ -29,7 +33,7 @@ struct RootView: View {
             case .dailyLog:
                 DailyLogView(anchor: $anchor, kind: $logPeriod)
             case .compile:
-                CompileView(day: $anchor)
+                CompileView(anchor: $anchor, kind: $compileRange, customStart: $customStart, customEnd: $customEnd)
             case nil:
                 EmptyView()
             }

@@ -5,10 +5,13 @@ import TimesheetCore
 struct PeriodBar: View {
     @Binding var anchor: Date
     @Binding var kind: PeriodKind
+    /// Compile hides it and shows its own Day|Week|Month|Custom picker instead.
+    let showsKindPicker: Bool
 
-    init(anchor: Binding<Date>, kind: Binding<PeriodKind>) {
+    init(anchor: Binding<Date>, kind: Binding<PeriodKind>, showsKindPicker: Bool = true) {
         _anchor = anchor
         _kind = kind
+        self.showsKindPicker = showsKindPicker
     }
 
     var body: some View {
@@ -24,14 +27,16 @@ struct PeriodBar: View {
             Button("Today") { anchor = Date() }
                 .disabled(containsToday)
             Spacer()
-            Picker("Period", selection: $kind) {
-                ForEach(PeriodKind.allCases, id: \.self) { option in
-                    Text(option.displayName).tag(option)
+            if showsKindPicker {
+                Picker("Period", selection: $kind) {
+                    ForEach(PeriodKind.allCases, id: \.self) { option in
+                        Text(option.displayName).tag(option)
+                    }
                 }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .fixedSize()
             }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .fixedSize()
         }
     }
 

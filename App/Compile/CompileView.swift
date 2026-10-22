@@ -3,25 +3,82 @@ import SwiftData
 import SwiftUI
 import TimesheetCore
 
-/// Pick a day, compile its entries with the configured model, fix the lines, copy them.
+/// What Compile works on: a period around the shared anchor, or a custom From–To range.
+enum CompileRangeKind: String, CaseIterable {
+    case day, week, month, custom
+
+    var displayName: String {
+        switch self {
+        case .day: "Day"
+        case .week: "Week"
+        case .month: "Month"
+        case .custom: "Custom"
+        }
+    }
+
+    /// The matching period, or nil for a custom range.
+    var period: PeriodKind? {
+        switch self {
+        case .day: .day
+        case .week: .week
+        case .month: .month
+        case .custom: nil
+        }
+    }
+}
+
+/// Pick a day or range, compile its entries with the configured model, fix the lines, copy them.
 struct CompileView: View {
-    @Binding var day: Date
+    @Binding var anchor: Date
+    @Binding var kind: CompileRangeKind
+    @Binding var customStart: Date
+    @Binding var customEnd: Date
 
     @Environment(\.modelContext) private var context
     @EnvironmentObject private var settings: SettingsStore
     @EnvironmentObject private var models: MLXModelManager
 
     var body: some View {
+        let range = self.range
         VStack(spacing: 0) {
-            PeriodBar(anchor: $day, kind: .constant(.day))
+            rangeBar
                 .padding(.horizontal)
                 .padding(.vertical, 8)
             Divider()
-            // Rebuilt per day so the view model loads that day's entries and saved result.
-            CompileDayView(model: CompileViewModel(day: day, context: context, settings: settings, models: models))
-                .id(DayKey.string(for: day))
+            // Rebuilt per range so the view model loads those days' entries and saved results.
+            CompileDayView(model: CompileViewModel(range: range, context: context, settings: settings, models: models))
+                .id("\(DayKey.string(for: range.start))…\(DayKey.string(for: range.end))")
         }
         .navigationTitle("Compile")
+    }
+
+    private var range: DayRange {
+        if let period = kind.period { return Period.range(period, containing: anchor) }
+        return DayRange(from: customStart, to: customEnd)
+    }
+
+    /// The period bar on the shared anchor, or From and To pickers; one Day|Week|Month|Custom picker either way.
+    private var rangeBar: some View {
+        HStack {
+            if let period = kind.period {
+                PeriodBar(anchor: $anchor, kind: .constant(period), showsKindPicker: false)
+            } else {
+                CalendarButton(title: Period.label(.day, anchor: customStart), date: $customStart,
+                               accessibilityLabel: "From")
+                Text("to").foregroundStyle(.secondary)
+                CalendarButton(title: Period.label(.day, anchor: customEnd), date: $customEnd,
+                               accessibilityLabel: "To")
+                Spacer()
+            }
+            Picker("Range", selection: $kind) {
+                ForEach(CompileRangeKind.allCases, id: \.self) { option in
+                    Text(option.displayName).tag(option)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .fixedSize()
+        }
     }
 }
 
@@ -45,9 +102,11 @@ private struct CompileDayView: View {
             Divider()
             LinesTable(model: model)
                 .overlay {
-                    if model.lines.isEmpty && model.state != .running {
+                    if model.lines.isEmpty && !model.isRunning {
                         ContentUnavailableView("No compiled lines", systemImage: "list.bullet.rectangle",
-                                               description: Text("Compile the day to get timesheet lines."))
+                                               description: Text(model.isSingleDay
+                                                   ? "Compile the day to get timesheet lines."
+                                                   : "Compile the range to get timesheet lines."))
                     }
                 }
             Divider()
@@ -57,7 +116,7 @@ private struct CompileDayView: View {
         .onAppear(perform: model.load)
         .onDisappear(perform: model.cancel)
         .onChange(of: settings.settings) { model.revalidate() }
-        .confirmationDialog("Replace the saved result for this day?", isPresented: $confirmingReplace,
+        .confirmationDialog(replaceTitle, isPresented: $confirmingReplace,
                             titleVisibility: .visible) {
             Button("Replace", role: .destructive) { model.start() }
             Button("Cancel", role: .cancel) {}
@@ -98,16 +157,17 @@ private struct CompileDayView: View {
     private var footer: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                let differs = model.totalMinutes != model.workingMinutes
-                Label(TotalText.total(model.totalMinutes, of: model.workingMinutes),
+                let differs = model.totalMinutes != model.expectedMinutes
+                Label(TotalText.total(model.totalMinutes, of: model.expectedMinutes),
                       systemImage: differs ? "exclamationmark.triangle" : "clock")
                     .foregroundStyle(differs ? .orange : .secondary)
-                    .help(differs ? "The lines don’t add up to the working day." : "")
+                    .help(differs ? (model.isSingleDay ? "The lines don’t add up to the working day."
+                                                       : "The lines don’t add up to the working days.") : "")
                 Spacer()
                 if copiedToken != nil {
                     Text("Copied").foregroundStyle(.secondary)
                 }
-                Button("Copy day", systemImage: "doc.on.doc", action: copy)
+                Button(model.isSingleDay ? "Copy day" : "Copy range", systemImage: "doc.on.doc", action: copy)
                     .keyboardShortcut("c", modifiers: [.command, .shift])
                     .disabled(model.lines.isEmpty)
                     .help("Copy the lines as plain text (⌘⇧C)")
@@ -128,7 +188,13 @@ private struct CompileDayView: View {
 
     /// Compile and Retry both ask before replacing a saved result, which may hold the user's edits.
     private func requestCompile() {
-        if model.hasSavedResult { confirmingReplace = true } else { model.start() }
+        if model.savedDaysToReplace > 0 { confirmingReplace = true } else { model.start() }
+    }
+
+    private var replaceTitle: String {
+        if model.isSingleDay { return "Replace the saved result for this day?" }
+        let count = model.savedDaysToReplace
+        return count == 1 ? "Replace saved results for 1 day?" : "Replace saved results for \(count) days?"
     }
 
     private func copy() {
@@ -155,9 +221,10 @@ private struct CompileBar: View {
     var body: some View {
         let plan = model.clientPlan
         HStack(spacing: 12) {
-            if model.state == .running {
+            if case .running(let done, let total) = model.state {
                 ProgressView().controlSize(.small)
-                Text("Compiling…").foregroundStyle(.secondary)
+                Text(model.isSingleDay ? "Compiling…" : "Compiling day \(done + 1) of \(total)…")
+                    .foregroundStyle(.secondary)
                 Button("Cancel") { model.cancel() }
                     .keyboardShortcut(.cancelAction)
             } else {
@@ -171,7 +238,8 @@ private struct CompileBar: View {
                         openSettings()
                     }
                 } else if model.entryCount == 0 {
-                    Text("No entries for this day").foregroundStyle(.secondary)
+                    Text(model.isSingleDay ? "No entries for this day" : "No entries in this range")
+                        .foregroundStyle(.secondary)
                 }
             }
             Spacer()
@@ -205,9 +273,10 @@ private struct LinesTable: View {
 
     private var table: some View {
         Table(model.lines, selection: $selection) {
-            TableColumn("") { line in
+            TableColumn("") { row in
+                let day = model.dayResult(containing: row.id)
                 let messages = IssueMessages.rowMessages(
-                    for: line.id, issues: model.issues, lines: model.lines, settings: settings.settings)
+                    for: row.id, issues: day?.issues ?? [], lines: day?.lines ?? [], settings: settings.settings)
                 if !messages.isEmpty {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .foregroundStyle(.orange)
@@ -216,34 +285,47 @@ private struct LinesTable: View {
                 }
             }
             .width(20)
-            TableColumn("Start") { line in
+            if !model.isSingleDay {
+                TableColumn("Date") { row in
+                    Text(Self.shortDate.string(from: row.day))
+                        .monospacedDigit()
+                }
+                .width(min: 48, ideal: 56)
+            }
+            TableColumn("Start") { row in
+                let line = row.line
                 timeField(line.start) { time in model.edit(line.id) { $0.start = time } }
             }
             .width(min: 56, ideal: 60)
-            TableColumn("End") { line in
+            TableColumn("End") { row in
+                let line = row.line
                 timeField(line.end) { time in model.edit(line.id) { $0.end = time } }
             }
             .width(min: 56, ideal: 60)
-            TableColumn("Description") { line in
+            TableColumn("Description") { row in
+                let line = row.line
                 CommitField(value: line.description, prompt: "Description") { text in
                     model.edit(line.id) { $0.description = text }
                 }
             }
             .width(min: 160, ideal: 280)
-            TableColumn("Ticket") { line in
+            TableColumn("Ticket") { row in
+                let line = row.line
                 CommitField(value: line.ticket ?? "", prompt: "None") { text in
                     model.edit(line.id) { $0.ticket = LineEditing.ticket(from: text) }
                 }
             }
             .width(min: 70, ideal: 90)
-            TableColumn("Activity type") { line in
+            TableColumn("Activity type") { row in
+                let line = row.line
                 ChoicePicker(label: "Activity type", list: settings.settings.activityTypes,
                              current: line.activityType) { value in
                     model.edit(line.id) { $0.activityType = value }
                 }
             }
             .width(min: 110, ideal: 130)
-            TableColumn("Classification") { line in
+            TableColumn("Classification") { row in
+                let line = row.line
                 ChoicePicker(label: "Classification", list: settings.settings.classifications,
                              current: line.classification) { value in
                     model.edit(line.id) { $0.classification = value }
@@ -252,6 +334,13 @@ private struct LinesTable: View {
             .width(min: 110, ideal: 130)
         }
     }
+
+    /// Template-independent short date, e.g. "Oct 22".
+    private static let shortDate: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.setLocalizedDateFormatFromTemplate("MMMd")
+        return formatter
+    }()
 
     private func timeField(_ time: ClockTime, commit: @escaping (ClockTime) -> Void) -> some View {
         CommitField(value: time.hhmm, prompt: "HH:mm", isValid: { LineEditing.time(from: $0) != nil }) { text in
