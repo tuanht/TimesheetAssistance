@@ -205,3 +205,74 @@ The app may later be rebuilt for Windows and Linux. This feature must not make t
 2. `Packages/Integrations`: MCP client, OAuth sign-in, Jira and GitHub fetchers. Verify the OAuth flow against both servers early.
 3. App: Integrations tab, background fetch/summarize coordinator, entry row and editor UI, Compile notice.
 4. Update `CLAUDE.md` and the original spec.
+
+## Spike findings (2026-10-22)
+
+Run with curl against the live servers, personal tokens only. App sign-in was not tried (no GitHub App client ID; no Atlassian client registration). All values below are shapes or synthetic placeholders (`acme`, `ABC-123`, `acme/web#7`).
+
+### Both servers
+- **Transport:** Streamable HTTP. Every JSON-RPC reply, even a single one, comes back as `Content-Type: text/event-stream` with one `event: message` and one `data: {json}` line. Atlassian answers `406` when `Accept` lacks `text/event-stream`, so always send `Accept: application/json, text/event-stream`.
+- **protocolVersion:** both return `2025-06-18` when asked for it. Both also echo `2025-11-25`. Use `2025-06-18`.
+- **Session:** both return `Mcp-Session-Id` on the `initialize` reply. Echo it on later requests.
+- **`notifications/initialized`:** both answer `202` with an empty body. The client must accept that.
+- **Tool errors:** a failing tool returns HTTP 200 with `result: {content: [{type: "text", text: "<message>"}], isError: true}`, not a JSON-RPC `error`. No `structuredContent` was seen on any reply.
+
+### GitHub (`https://api.githubcopilot.com/mcp/`) — personal token verified
+- **Auth:** `Authorization: Bearer <fine-grained PAT>` works.
+- **Tools:** 46 tools listed, read and write mixed. Read tools needed: `get_me` (no arguments) and `pull_request_read`. `pull_request_read` needs all of `method` (enum, use `"get"`), `owner` (string), `repo` (string) and `pullNumber` (JSON number). Its annotation has `readOnlyHint: true`. It has no `outputSchema`.
+- **Result:** `content[0].text` is a JSON string. Keys: `number`, `title`, `body`, `state` (`open`/`closed`), `draft`, `merged` (bool), `mergeable_state`, `html_url`, `user {login, id, profile_url, avatar_url}`, `assignees [string]`, `head {ref, sha, repo {full_name, description}}`, `base {…same}`, `additions`, `deletions`, `changed_files`, `commits`, `created_at`, `updated_at`. Whether `body` can be null was not seen.
+- **Not found** (missing PR, or an unknown or inaccessible repo): `isError: true`, text `failed to get pull request: GET https://api.github.com/repos/acme/web/pulls/7: 404 Not Found []`. Match on `404 Not Found`.
+- **Bad token:**
+  - A well-formed but invalid token gets HTTP `401`, `text/plain`, body `unauthorized: token authentication failed`. The `WWW-Authenticate: Bearer error="invalid_token"` header carries `resource_metadata`.
+  - A malformed token gets HTTP **`400`**, body `bad request: Authorization header is badly formatted`, with the same `WWW-Authenticate` header.
+  - No header at all also gets `401`.
+  - Treat 400 with `WWW-Authenticate … invalid_token` as an auth failure.
+- **403:** not triggered.
+- **OAuth discovery:**
+  - Root `/.well-known/oauth-protected-resource` is 404.
+  - The path-suffixed `/.well-known/oauth-protected-resource/mcp/` lists `authorization_servers: ["https://github.com/login/oauth"]` and `bearer_methods_supported: ["header"]`.
+  - `scopes_supported` is the OAuth App set, including the write scope `repo`. So the GitHub App plan, with fine-grained permissions, stands.
+  - There is no registration endpoint (no DCR). Device flow is **unverified — needs manual test**.
+
+### Atlassian — personal token NOT working
+- **`/v1/mcp`:**
+  - With no `Authorization` header: `401` JSON `{"error":"invalid_token","error_description":"Missing or invalid access token"}`.
+  - With *any* `Basic` or `Bearer` value, including a fake one, `initialize` and `tools/list` succeed. The token is not checked there.
+  - `tools/list` then shows only 4 Teamwork Graph tools (`getTeamworkGraphContext`, `getTeamworkGraphObject`, `addTeamworkGraphContext`, `getContentFormatGuide`), the same for real and fake tokens.
+  - `getJiraIssue`, `getAccessibleAtlassianResources` and `atlassianUserInfo` return `isError: true`, text `MCP error -32602: Tool <name> not found`.
+  - So "initialize succeeded" proves nothing. A connection test must call a real Jira tool.
+- **`/v2/mcp`:** Atlassian's docs name this endpoint for API-token auth (`Basic base64(email:api_token)`, or `Bearer` for a service-account key). The real token gets `401` `{"error":"invalid_token"}` with `WWW-Authenticate: Bearer resource_metadata="https://mcp.atlassian.com/.well-known/oauth-protected-resource/v2/mcp"`. That is identical to a fake token, with Basic or Bearer.
+- **Likely cause (unconfirmed):** an org admin must enable "API token" authentication for the Rovo MCP server, and the token may need to be a *scoped* API token. Atlassian's docs say API-token sessions get a smaller toolset, and that the client must pass `cloudId` itself.
+- **Tool names and arguments** (`getJiraIssue {cloudId, issueIdOrKey}`, `getAccessibleAtlassianResources`, `atlassianUserInfo`): **unverified**. The Jira result shape, the description format (ADF or markdown), not-found and 403 are also **unverified**.
+- **OAuth discovery:**
+  - **v1:**
+    - Root `/.well-known/oauth-protected-resource` and the `/v1/mcp` suffix are both 404.
+    - `https://mcp.atlassian.com/.well-known/oauth-authorization-server` is 200, with issuer `https://mcp.atlassian.com`, `authorization_endpoint` `/v1/authorize`, `token_endpoint` `/v1/token` and `registration_endpoint` `/v1/register` (DCR exists).
+    - Other fields: `code_challenge_methods_supported: [plain, S256]`, `token_endpoint_auth_methods_supported` includes `none`, grants `authorization_code` and `refresh_token`. No `scopes_supported`.
+  - **v2:**
+    - The protected-resource document is at `/.well-known/oauth-protected-resource/v2/mcp`. Its authorization server is `https://auth.atlassian.com/<issuer-id>`, a different host.
+    - The metadata is served at both `<issuer>/.well-known/oauth-authorization-server` and `https://auth.atlassian.com/.well-known/oauth-authorization-server/<issuer-id>`.
+    - `authorization_endpoint` `https://auth.atlassian.com/authorize`, `token_endpoint` `https://auth.atlassian.com/oauth/token`, `registration_endpoint` `<issuer>/dcr/register`. S256 only, and `client_id_metadata_document_supported: true`.
+    - `scopes_supported` includes `read:jira:agent-interface`, `search:jira:agent-interface`, `read:me`, `offline_access`, and many write scopes. The narrowest set for this feature is `read:jira:agent-interface offline_access` (plus `read:me` for the account name).
+  - Redirect type (custom scheme or loopback): **unverified — needs manual test**.
+
+### Consequences for this design
+- The Atlassian MCP URL becomes `https://mcp.atlassian.com/v2/mcp`, the endpoint Atlassian documents for API tokens. Its OAuth issuer is on `auth.atlassian.com`. Tokens are still sent only to `mcp.atlassian.com`; OAuth traffic goes to `auth.atlassian.com`. If Jira tools turn out to be reachable only on v1 under OAuth, switch the constant back. One constant, re-checked during Task 10.
+- Jira personal-token setup needs an admin toggle. Settings must say so. "Test" must call `atlassianUserInfo` (or `getAccessibleAtlassianResources`), not stop at `initialize`.
+- A "Tool … not found" reply from Atlassian means the toolset is restricted (admin setting or token scopes). Show it as "not approved", not as a bug.
+- Before Task 8's Jira half is final, an Atlassian admin enables API-token auth (or a manual OAuth sign-in is done), and the spike is re-run for `getJiraIssue`.
+
+### Synthetic fixtures
+GitHub `pull_request_read` (`method: get`) text payload:
+```json
+{"number":7,"title":"Add retry to sync","body":"Retries failed uploads.","state":"closed","draft":false,"merged":true,"mergeable_state":"unknown","html_url":"https://github.com/acme/web/pull/7","user":{"login":"octo","id":1,"profile_url":"https://github.com/octo","avatar_url":"https://example.com/a.png"},"assignees":["octo"],"head":{"ref":"feature/retry","sha":"0000000000000000000000000000000000000000","repo":{"full_name":"acme/web","description":"Web app"}},"base":{"ref":"main","sha":"1111111111111111111111111111111111111111","repo":{"full_name":"acme/web","description":"Web app"}},"additions":10,"deletions":2,"changed_files":1,"commits":1,"created_at":"2026-01-01T00:00:00Z","updated_at":"2026-01-02T00:00:00Z"}
+```
+Tool-error envelope (both servers):
+```json
+{"jsonrpc":"2.0","id":3,"result":{"content":[{"type":"text","text":"failed to get pull request: GET https://api.github.com/repos/acme/web/pulls/7: 404 Not Found []"}],"isError":true}}
+```
+SSE framing of any reply:
+```
+event: message
+data: {"jsonrpc":"2.0","id":1,"result":{…}}
+```

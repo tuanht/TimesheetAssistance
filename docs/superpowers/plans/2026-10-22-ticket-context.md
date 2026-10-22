@@ -389,7 +389,7 @@ public struct MCPServer: Sendable {
     public let service: IntegrationService
     public let url: URL
     public let allowedTools: Set<String>
-    public static let atlassian: MCPServer   // https://mcp.atlassian.com/v1/mcp ; ["getJiraIssue", "getAccessibleAtlassianResources", "atlassianUserInfo"]
+    public static let atlassian: MCPServer   // https://mcp.atlassian.com/v2/mcp (Task 0: API-token endpoint; recheck in Task 10) ; ["getJiraIssue", "getAccessibleAtlassianResources", "atlassianUserInfo"] (names unverified)
     public static let github: MCPServer      // https://api.githubcopilot.com/mcp/ ; ["pull_request_read", "get_me"]
     // Tool names as confirmed or corrected by Task 0. All are read-only.
 }
@@ -403,10 +403,10 @@ public actor MCPClient {
 }
 ```
 Behaviour:
-- First call: `initialize`, with `protocolVersion` from Task 0 and `clientInfo {name: "TimesheetAssistant", version}`, then `notifications/initialized`, then `tools/call`. Keep `Mcp-Session-Id` from the initialize reply and echo it on later requests.
-- Send `Accept: application/json, text/event-stream`. On SSE, read `data:` lines until the JSON-RPC reply whose `id` matches.
+- First call: `initialize`, with `protocolVersion: "2025-06-18"` (Task 0) and `clientInfo {name: "TimesheetAssistant", version}`, then `notifications/initialized`, then `tools/call`. Keep `Mcp-Session-Id` from the initialize reply and echo it on later requests.
+- Send `Accept: application/json, text/event-stream` (Atlassian answers 406 without `text/event-stream`). Both servers reply with SSE even for one reply (`event: message` + `data: {json}`): read `data:` lines until the JSON-RPC reply whose `id` matches. `notifications/initialized` gets `202` with an empty body; accept it.
 - A tool not in `allowedTools` throws `ContextError.toolNotAllowed(name)` before any request is made.
-- 401 gives `.signInAgain`. 403 with an org/approval message (pattern from Task 0) gives `.notApproved`, any other 403 gives `.signInAgain`. Network errors and timeouts give `.unreachable`. Any 3xx gives `.unreachable`, because redirects are refused. A JSON-RPC error or `isError: true` tool result is passed up as `MCPToolError(message)` (internal type) for the fetchers to map. Undecodable replies give `.unexpectedReply`.
+- 401 gives `.signInAgain`. 400 carrying `WWW-Authenticate: … error="invalid_token"` (GitHub's reply to a malformed token) also gives `.signInAgain`. 403 was not seen in Task 0: 403 with an org/approval message gives `.notApproved`, any other 403 gives `.signInAgain`. Network errors and timeouts give `.unreachable`. Any 3xx gives `.unreachable`, because redirects are refused. A JSON-RPC error or `isError: true` tool result (both servers report tool failures as HTTP 200 with `result.isError: true` and one text content) is passed up as `MCPToolError(message)` (internal type) for the fetchers to map. `structuredContent` was never seen, so the text-JSON path is the main one. Undecodable replies give `.unexpectedReply`.
 - `Authorization` is set only when `request.url?.host == server.url.host`.
 - `session == nil` gives an ephemeral `URLSession` with a `RedirectRefuser` delegate (same logic as the one in `OpenAICompatibleClient.swift`, re-declared here because that one is private).
 
@@ -422,6 +422,8 @@ Behaviour:
   - `basicHeaderSent`: `Basic ` + base64 of `email:token`
   - `redirectIsRefused`
   - `unauthorizedMapsToSignInAgain`
+  - `badRequestInvalidTokenMapsToSignInAgain`
+  - `acceptsEmptyAcceptedNotification`: 202 with no body for `notifications/initialized`
   - `forbiddenApprovalMapsToNotApproved`
   - `offlineMapsToUnreachable`
   - `messageNeverContainsToken`: for every thrown error, `userMessage` doesn't contain the token string
@@ -455,8 +457,8 @@ public struct JiraFetcher: ContextFetcher {
 public struct GitHubFetcher: ContextFetcher { public init(tools: any ToolCalling) }
 ```
 - Jira: `title` = `fields.summary`, `state` = `fields.status.name`, `detail` = `fields.issuetype.name`, `body` = description as plain text. If the description is ADF JSON, flatten its text nodes with newlines between blocks. That flattening is the builder's call, tested with one nested fixture.
-- GitHub: `title`, `state` (`merged` when `merged == true`), `detail` = `"\(head.ref) → \(base.ref)"`, `body` (empty when null).
-- Tool error mapping: not-found or 404-like gives `.notFound(ref.canonical)`. Any other tool error gives `.unexpectedReply(service)`. A fetcher given the other service's reference throws `.unexpectedReply`, which is a programming guard.
+- GitHub: `title`, `state` (`merged` when `merged == true`, else `open`/`closed`), `detail` = `"\(head.ref) → \(base.ref)"`, `body` (empty when null or missing). Call `pull_request_read` with `method: "get"`, `owner`, `repo`, `pullNumber` as a JSON number (Task 0 confirmed). The result is JSON inside `content[0].text`.
+- Tool error mapping: not-found or 404-like gives `.notFound(ref.canonical)`. GitHub's text is `failed to get pull request: GET https://api.github.com/repos/<o>/<r>/pulls/<n>: 404 Not Found []` (match `404 Not Found`). Jira's not-found text is unverified (Task 0 could not reach Jira tools). Atlassian's `MCP error -32602: Tool <name> not found` means the toolset is restricted by admin setting or token scopes: give `.notApproved(.jira)`. Any other tool error gives `.unexpectedReply(service)`. A fetcher given the other service's reference throws `.unexpectedReply`, which is a programming guard.
 
 - [ ] **Step 1: Write failing tests** using a fake `ToolCalling`:
   - `jiraMapsFields`
@@ -518,6 +520,7 @@ public struct StoredOAuthCredentials: CredentialProvider {
 public enum Disconnect { public static func service(_ s: IntegrationService, store: any TokenStore) }  // deletes both keys of that service
 ```
 - A missing token or missing Jira email throws `.notConnected(service)`.
+- Task 0: Atlassian's MCP server accepts any `Authorization` value at `initialize` on v1, so the Settings **Test** must call `atlassianUserInfo` (Jira) or `get_me` (GitHub), never stop at `initialize`. Jira personal tokens work only once an org admin enables API-token auth for the Rovo MCP server (Settings text says so). The token may also need to be a scoped API token. Neither was verified.
 - The device flow sends `Accept: application/json` and refuses redirects. `authorization_pending` keeps polling. `slow_down` adds 5 seconds to the interval. `expired_token` and `access_denied` throw `.signInAgain(.github)`.
 - GitHub token refresh needs a client secret, which we don't ship. So an expired token means signing in again, unless Task 0 found the tokens don't expire.
 
@@ -557,15 +560,15 @@ public protocol SignInPresenter: Sendable {
 public struct PKCE: Sendable { public let verifier: String; public let challenge: String   // S256, base64url, no padding
     public static func make() -> PKCE; static func challenge(for verifier: String) -> String }
 public struct AtlassianOAuth: Sendable {
-    public static let redirectURI: URL        // from Task 0: custom scheme or loopback
+    public static let redirectURI: URL        // custom scheme or loopback: unverified in Task 0, settle with a manual sign-in first
     public init(store: any TokenStore, presenter: any SignInPresenter, session: URLSession? = nil)
     public func signIn() async throws          // discover → register (once, clientId kept in OAuthToken) → authorize → exchange → store .jiraOAuth
     public func credentials() -> any CredentialProvider   // refreshes when expiresAt is within 60 s
 }
 ```
-- Discovery: `GET https://mcp.atlassian.com/.well-known/oauth-protected-resource`, then the authorization server metadata. Every discovered endpoint's host must equal `atlassian.com` or end with `.atlassian.com` or `.atlassian.net`. Otherwise throw `.unexpectedReply(.jira)`. Redirects are refused.
+- Discovery (Task 0): the root `https://mcp.atlassian.com/.well-known/oauth-protected-resource` is 404. Use the path-suffixed one for the server URL: `https://mcp.atlassian.com/.well-known/oauth-protected-resource/v2/mcp`. It is also given in the 401 `WWW-Authenticate: Bearer resource_metadata="…"`. It names `authorization_servers: ["https://auth.atlassian.com/<issuer-id>"]`. Fetch `<issuer>/.well-known/oauth-authorization-server`, which gives `authorization_endpoint`, `token_endpoint` (`auth.atlassian.com/oauth/token`), `registration_endpoint` (`<issuer>/dcr/register`) and S256 only. If the server constant moves back to `/v1/mcp`, its metadata is at `https://mcp.atlassian.com/.well-known/oauth-authorization-server` (`/v1/authorize`, `/v1/token`, `/v1/register`). Every discovered endpoint's host must equal `atlassian.com` or end with `.atlassian.com` or `.atlassian.net`. Otherwise throw `.unexpectedReply(.jira)`. Redirects are refused.
 - Check that `state` in the callback matches. A mismatch or a missing `code` throws `.signInAgain(.jira)`.
-- Ask for the narrowest read scopes listed in the metadata, recorded in Task 0.
+- Ask for the narrowest read scopes listed in the metadata: `read:jira:agent-interface offline_access read:me` (from v2 `scopes_supported`; v1 lists none). The access token goes only to `mcp.atlassian.com`; `auth.atlassian.com` receives only OAuth traffic.
 - If the redirect is loopback (from Task 0), add `LoopbackListener` in the App target, not here. The presenter then receives the URL from it, so this type is unchanged.
 
 - [ ] **Step 1: Write failing tests:**
