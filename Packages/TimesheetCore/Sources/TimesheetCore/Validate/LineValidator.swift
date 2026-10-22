@@ -3,6 +3,8 @@ import Foundation
 public struct LineIssue: Equatable, Sendable {
     public enum Kind: Equatable, Sendable {
         case missingLine
+        /// The line's entry is no longer among the day's entries.
+        case orphanLine
         case endNotAfterStart
         case outsideWorkingHours
         case inLunch
@@ -11,6 +13,8 @@ public struct LineIssue: Equatable, Sendable {
         case unknownClassification
         case invalidTicket
         case descriptionTooLong
+        /// Empty or whitespace only.
+        case emptyDescription
     }
 
     public var lineId: UUID?
@@ -29,6 +33,7 @@ public enum LineValidator {
     /// Issues ordered: missing lines (in `entryIds` order), then per line in input order.
     public static func validate(_ lines: [TimesheetLine], entryIds: [UUID], settings: AppSettings) -> [LineIssue] {
         let covered = Set(lines.map(\.entryId))
+        let known = Set(entryIds)
         var issues = entryIds
             .filter { !covered.contains($0) }
             .map { LineIssue(lineId: nil, entryId: $0, kind: .missingLine) }
@@ -41,6 +46,7 @@ public enum LineValidator {
             func flag(_ kind: LineIssue.Kind) {
                 issues.append(LineIssue(lineId: line.id, entryId: line.entryId, kind: kind))
             }
+            if !known.contains(line.entryId) { flag(.orphanLine) }
             if line.end <= line.start { flag(.endNotAfterStart) }
             if line.start < hours.start || line.end > hours.end { flag(.outsideWorkingHours) }
             if hasLunch, intersects(line.start, line.end, hours.lunchStart, hours.lunchEnd) { flag(.inLunch) }
@@ -57,6 +63,7 @@ public enum LineValidator {
             if let max = settings.template.maxDescriptionLength, line.description.count > max {
                 flag(.descriptionTooLong)
             }
+            if line.description.allSatisfy(\.isWhitespace) { flag(.emptyDescription) }
         }
         return issues
     }

@@ -26,6 +26,8 @@ struct IssueMessagesTests {
             (.unknownClassification, "Classification is empty."),
             (.invalidTicket, "Ticket “x” doesn’t match the ticket pattern."),
             (.descriptionTooLong, "Description is longer than 3 characters."),
+            (.orphanLine, "Its entry was deleted."),
+            (.emptyDescription, "Description is empty."),
         ]
         for (kind, expected) in cases {
             let issue = LineIssue(lineId: target.id, entryId: target.entryId, kind: kind)

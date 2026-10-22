@@ -27,6 +27,27 @@ struct LineValidatorTests {
         #expect(issues == [LineIssue(lineId: nil, entryId: other, kind: .missingLine)])
     }
 
+    @Test func lineForDeletedEntryIsOrphan() {
+        let deleted = UUID()
+        let kept = line("09:00", "10:00")
+        let orphan = line("10:00", "11:00", entry: deleted)
+        #expect(validate([kept, orphan]) == [LineIssue(lineId: orphan.id, entryId: deleted, kind: .orphanLine)])
+    }
+
+    @Test func everyLineIsOrphanWhenTheDayHasNoEntries() {
+        let l = line("09:00", "10:00")
+        #expect(validate([l], entryIds: []) == [LineIssue(lineId: l.id, entryId: entry, kind: .orphanLine)])
+    }
+
+    @Test func emptyOrBlankDescriptionIsFlagged() {
+        let empty = line("09:00", "10:00", description: "")
+        let blank = line("10:00", "11:00", description: " \n\t ")
+        #expect(validate([empty, blank]) == [
+            LineIssue(lineId: empty.id, entryId: entry, kind: .emptyDescription),
+            LineIssue(lineId: blank.id, entryId: entry, kind: .emptyDescription),
+        ])
+    }
+
     @Test func zeroLengthLine() {
         let l = line("10:00", "10:00")
         #expect(validate([l]) == [LineIssue(lineId: l.id, entryId: entry, kind: .endNotAfterStart)])

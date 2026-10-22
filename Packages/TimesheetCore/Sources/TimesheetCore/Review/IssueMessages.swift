@@ -8,6 +8,8 @@ public enum IssueMessages {
         switch issue.kind {
         case .missingLine:
             return "This entry has no line."
+        case .orphanLine:
+            return "Its entry was deleted."
         case .endNotAfterStart:
             return "End is not after start."
         case .outsideWorkingHours:
@@ -25,6 +27,8 @@ public enum IssueMessages {
             return "Ticket “\(line?.ticket ?? "")” doesn’t match the ticket pattern."
         case .descriptionTooLong:
             return "Description is longer than \(settings.template.maxDescriptionLength ?? 0) characters."
+        case .emptyDescription:
+            return "Description is empty."
         }
     }
 
