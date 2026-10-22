@@ -20,6 +20,7 @@ let package = Package(
                 .product(name: "TimesheetCore", package: "TimesheetCore"),
                 .product(name: "MLXLLM", package: "mlx-swift-lm"),
                 .product(name: "MLXLMCommon", package: "mlx-swift-lm"),
+                .product(name: "MLXGuidedGeneration", package: "mlx-swift-lm"),
                 .product(name: "Tokenizers", package: "swift-transformers"),
             ]),
         .testTarget(name: "LocalModelsTests", dependencies: ["LocalModels"]),
