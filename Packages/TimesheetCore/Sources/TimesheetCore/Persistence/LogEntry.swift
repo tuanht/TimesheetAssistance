@@ -12,6 +12,12 @@ public final class LogEntry {
     public var durationHint: String?
     public var text: String
     public var createdAt: Date
+    /// LLM summary of the referenced tickets and PRs; raw ticket text is never stored.
+    public var contextSummary: String? = nil
+    public var contextRefs: [String]? = nil
+    /// Set when the user edited the summary, so a refresh must ask before overwriting it.
+    public var contextEdited: Bool = false
+    public var contextUpdatedAt: Date? = nil
 
     /// `day` is read as a calendar date in `timeZone`.
     public init(
@@ -39,6 +45,8 @@ public final class LogEntry {
     }
 
     public var snapshot: EntrySnapshot {
-        EntrySnapshot(id: id, type: type, ticketRef: ticketRef, durationHint: durationHint, text: text)
+        let summary = contextSummary?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false ? contextSummary : nil
+        return EntrySnapshot(
+            id: id, type: type, ticketRef: ticketRef, durationHint: durationHint, text: text, contextSummary: summary)
     }
 }
