@@ -63,13 +63,19 @@ struct GuidedJSONTests {
         #expect(try !accepts(reply([item("e1")]), schema: schema))
     }
 
-    @Test func guidedErrorsMapToIncompleteResponse() {
-        #expect(GuidedJSON.mapError(GuidedGenerationError.incompleteOutput) as? LLMError == .incompleteResponse)
-        #expect(GuidedJSON.mapError(GuidedGenerationError.prematureEOS) as? LLMError == .incompleteResponse)
-        #expect(GuidedJSON.mapError(GrammarError.commitFailed("token=7")) as? LLMError == .incompleteResponse)
-        #expect(GuidedJSON.mapError(GrammarError.maskComputationFailed("x")) as? LLMError == .incompleteResponse)
-        #expect(GuidedJSON.mapError(CancellationError()) is CancellationError)
-        #expect(GuidedJSON.mapError(LLMError.timeout) as? LLMError == .timeout)
+    @Test func guidedFailuresFallBack() {
+        #expect(GuidedJSON.fallbackReason(for: GuidedGenerationError.incompleteOutput) == "incompleteOutput")
+        #expect(GuidedJSON.fallbackReason(for: GuidedGenerationError.prematureEOS) == "prematureEOS")
+        #expect(GuidedJSON.fallbackReason(for: GrammarError.maskComputationFailed("x")) == "maskComputationFailed")
+    }
+
+    @Test func fallbackReasonNamesOnlyTheCase() {
+        #expect(GuidedJSON.fallbackReason(for: GrammarError.commitFailed("token=7")) == "commitFailed")
+    }
+
+    @Test func otherErrorsAreRethrown() {
+        #expect(GuidedJSON.fallbackReason(for: CancellationError()) == nil)
+        #expect(GuidedJSON.fallbackReason(for: LLMError.timeout) == nil)
     }
 
     @Test func setupFailureFallsBack() throws {

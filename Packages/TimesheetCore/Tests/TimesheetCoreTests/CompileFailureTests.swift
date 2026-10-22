@@ -16,11 +16,6 @@ struct CompileFailureTests {
             == "Couldn't load the model. Delete it in Settings › Models and download it again.")
     }
 
-    @Test func incompleteResponseMessage() {
-        #expect(LLMError.incompleteResponse.userMessage
-            == "The model's answer was cut off before it finished. Try again.")
-    }
-
     @Test(arguments: [ParseError.noJSON, .invalidJSON("raw model output {\"items\":")])
     func parseErrorIsReadableAndHidesModelOutput(error: ParseError) {
         let message = CompileFailure.message(for: error)

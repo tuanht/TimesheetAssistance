@@ -2,19 +2,22 @@ import Foundation
 import MLXGuidedGeneration
 import MLXLLM
 import MLXLMCommon
+import os
 import TimesheetCore
 
 /// Runs one downloaded model on this Mac. The model loads on the first `complete` and stays loaded.
 public actor MLXClient: LLMClient {
     static let temperature: Float = 0.2
     static let maxTokens = 2048
+    /// Content-free: names a failure's case only, never the schema, prompt or reply.
+    private static let log = Logger(subsystem: "TimesheetAssistant.LocalModels", category: "MLXClient")
 
     private let directory: URL
     private var loading: Task<ModelContainer, Error>? {
-        didSet { grammarTokenizer = nil }
+        didSet { grammarVocabulary = nil }
     }
     /// XGrammar's copy of the loaded model's vocabulary; slow to build, so it lives as long as the model.
-    private var grammarTokenizer: GrammarTokenizer?
+    private var grammarVocabulary: GrammarVocabulary?
 
     init(directory: URL) {
         self.directory = directory
@@ -26,8 +29,8 @@ public actor MLXClient: LLMClient {
         try await complete(system: system, user: user, jsonSchema: nil)
     }
 
-    /// With a `jsonSchema`, decoding is constrained to it and a reply cut off mid-JSON throws
-    /// `LLMError.incompleteResponse`. A schema XGrammar can't compile falls back to unconstrained decoding.
+    /// With a `jsonSchema`, decoding is constrained to it. When the grammar can't be set up, or the guided run
+    /// fails (cut off, or the grammar errors), the call falls back once to unconstrained, sampled decoding.
     public func complete(system: String, user: String, jsonSchema: String?) async throws -> String {
         let container = try await container()
         try Task.checkCancellation()
@@ -58,31 +61,42 @@ public actor MLXClient: LLMClient {
         return text
     }
 
-    /// Returns nil when the grammar can't be set up, so the caller falls back to unconstrained decoding.
+    /// Returns nil when the grammar can't be set up or the guided run fails, so the caller falls back to
+    /// unconstrained decoding.
     private func guided(
         _ container: ModelContainer, system: String, user: String, jsonSchema: String
     ) async throws -> String? {
-        let cached = grammarTokenizer
+        let cached = grammarVocabulary
         let generation = loading
-        let (tokenizer, text): (GrammarTokenizer?, String?) = try await container.perform { context in
+        let (vocabulary, text): (GrammarVocabulary?, String?) = try await container.perform { context in
             let input = try await context.processor.prepare(input: Self.chat(system: system, user: user))
-            let tokenizer: GrammarTokenizer
+            let vocabulary: GrammarVocabulary
             let constraint: GrammarConstraint
             do {
-                tokenizer = try cached ?? GuidedJSON.grammarTokenizer(for: context.tokenizer)
-                constraint = try GrammarConstraint(
-                    tokenizer: tokenizer, jsonSchema: jsonSchema, fastForward: true,
-                    hostTokenizer: context.tokenizer)
-            } catch is GrammarError {
+                vocabulary = try cached ?? GuidedJSON.vocabulary(for: context.tokenizer)
+            } catch let error as GrammarError {
+                Self.logFallback(error)
                 return (nil, nil)
+            }
+            do {
+                constraint = try GrammarConstraint(
+                    tokenizer: vocabulary.tokenizer, jsonSchema: jsonSchema, fastForward: true,
+                    hostTokenizer: context.tokenizer)
+            } catch let error as GrammarError {
+                // The vocabulary is still good; keep it so the next compile skips the vocab walk.
+                Self.logFallback(error)
+                return (vocabulary, nil)
             }
 
             var output = ""
             do {
-                // The guided loop samples greedily, so `temperature` doesn't apply here.
+                // The guided loop samples greedily, so `temperature` doesn't apply here. No closing bias:
+                // forcing the JSON shut near the limit would silently cut descriptions.
                 try GuidedGenerationLoop.run(
                     input: input, context: context, constraint: constraint,
-                    maxTokens: Self.maxTokens, vocabSize: tokenizer.vocabSize
+                    maxTokens: Self.maxTokens, vocabSize: vocabulary.tokenizer.vocabSize,
+                    whitespaceBias: vocabulary.whitespaceBias,
+                    whitespaceTokenIDs: vocabulary.whitespaceTokenIDs
                 ) { delta in
                     output += delta
                     return !Task.isCancelled
@@ -90,13 +104,20 @@ public actor MLXClient: LLMClient {
             } catch {
                 // A cancel that lands at the token limit surfaces as `incompleteOutput`; it's still a cancel.
                 if Task.isCancelled { throw CancellationError() }
-                throw GuidedJSON.mapError(error)
+                guard GuidedJSON.fallbackReason(for: error) != nil else { throw error }
+                Self.logFallback(error)
+                return (vocabulary, nil)
             }
-            return (tokenizer, output)
+            return (vocabulary, output)
         }
         // A model reloaded meanwhile may have another vocabulary, so only cache against the same load.
-        if let tokenizer, loading == generation { grammarTokenizer = tokenizer }
+        if let vocabulary, loading == generation { grammarVocabulary = vocabulary }
         return text
+    }
+
+    private static func logFallback(_ error: Error) {
+        let reason = GuidedJSON.fallbackReason(for: error) ?? "unknown"
+        log.debug("Guided decoding failed (\(reason, privacy: .public)); falling back to unconstrained")
     }
 
     /// Templates without a thinking switch ignore `enable_thinking`; Qwen3 skips its <think> block.
