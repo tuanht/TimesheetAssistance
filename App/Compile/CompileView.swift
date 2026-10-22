@@ -317,18 +317,18 @@ private struct LinesTable: View {
             .width(min: 56, ideal: 60)
             TableColumn("Description") { row in
                 let line = row.line
-                CommitField(value: line.description, prompt: "Description") { text in
+                CommitField(value: line.description, prompt: "Description", copyLabel: "Copy description") { text in
                     model.edit(line.id) { $0.description = text }
                 }
             }
             .width(min: 160, ideal: 280)
             TableColumn("Ticket") { row in
                 let line = row.line
-                CommitField(value: line.ticket ?? "", prompt: "None") { text in
+                CommitField(value: line.ticket ?? "", prompt: "None", copyLabel: "Copy ticket") { text in
                     model.edit(line.id) { $0.ticket = LineEditing.ticket(from: text) }
                 }
             }
-            .width(min: 70, ideal: 90)
+            .width(min: 90, ideal: 110)
             TableColumn("Activity type") { row in
                 let line = row.line
                 ChoicePicker(label: "Activity type", list: settings.settings.activityTypes,
@@ -364,18 +364,37 @@ private struct LinesTable: View {
 }
 
 /// A text field that applies its text on Return or when it loses focus, and only when valid.
+/// With a copy label it also shows a button that copies the text as shown, committed or not.
 private struct CommitField: View {
     let value: String
     let prompt: String
     var isValid: (String) -> Bool = { _ in true }
+    var copyLabel: String?
     let commit: (String) -> Void
 
     @State private var text = ""
+    @State private var copiedToken: UUID?
     @FocusState private var focused: Bool
 
     var body: some View {
+        HStack(spacing: 4) {
+            field
+            if let copyLabel {
+                Button(action: copy) {
+                    Image(systemName: copiedToken == nil ? "doc.on.doc" : "checkmark")
+                }
+                .buttonStyle(.borderless)
+                .foregroundStyle(.secondary)
+                .disabled(text.isEmpty)
+                .help(copyLabel)
+                .accessibilityLabel(copyLabel)
+            }
+        }
+    }
+
+    private var field: some View {
         let valid = isValid(text)
-        TextField(prompt, text: $text, prompt: Text(prompt))
+        return TextField(prompt, text: $text, prompt: Text(prompt))
             .labelsHidden()
             .textFieldStyle(.plain)
             .focused($focused)
@@ -390,6 +409,18 @@ private struct CommitField: View {
     private func apply() {
         guard isValid(text), text != value else { return }
         commit(text)
+    }
+
+    /// Copies without committing; the token keeps a quick second click from reverting the checkmark early.
+    private func copy() {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+        let token = UUID()
+        copiedToken = token
+        Task {
+            try? await Task.sleep(for: .seconds(1.5))
+            if copiedToken == token { copiedToken = nil }
+        }
     }
 }
 

@@ -4,12 +4,12 @@ import TimesheetCore
 
 struct RootView: View {
     private enum Section: String, CaseIterable, Identifiable {
-        case dailyLog = "Daily log"
+        case log = "Log"
         case compile = "Compile"
         var id: String { rawValue }
     }
 
-    @State private var selection: Section? = .dailyLog
+    @AppStorage("mainTab") private var selection: Section = .log
     /// Shared by the daily log and Compile so both work on the same day.
     @State private var anchor = Date()
     /// Which period the daily log shows around `anchor`.
@@ -23,26 +23,47 @@ struct RootView: View {
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
-        NavigationSplitView {
-            List(Section.allCases, selection: $selection) { section in
-                Text(section.rawValue).tag(section)
-            }
-            .navigationSplitViewColumnWidth(min: 160, ideal: 180)
-        } detail: {
+        Group {
             switch selection {
-            case .dailyLog:
+            case .log:
                 DailyLogView(anchor: $anchor, kind: $logPeriod)
             case .compile:
                 CompileView(anchor: $anchor, kind: $compileRange, customStart: $customStart, customEnd: $customEnd)
-            case nil:
-                EmptyView()
             }
         }
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                Picker("Section", selection: $selection) {
+                    ForEach(Section.allCases) { section in
+                        Text(section.rawValue).tag(section)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+            }
+        }
+        // The centered tabs already name the page; the title stays set for the Window menu and Mission Control.
+        .toolbar(removing: .title)
+        .background { tabShortcuts }
         .frame(minWidth: 720, minHeight: 440)
         .onReceive(NotificationCenter.default.publisher(for: .NSCalendarDayChanged).receive(on: RunLoop.main)) { _ in
             followToday()
         }
         .onChange(of: scenePhase) { if scenePhase == .active { followToday() } }
+    }
+
+    /// ⌘1/⌘2 live in this window, not the menu bar: AppKit routes key equivalents to the key window, so
+    /// while a sheet, dialog or alert is up they never reach here and can't tear down a draft.
+    private var tabShortcuts: some View {
+        ZStack {
+            Button("Log") { selection = .log }
+                .keyboardShortcut("1", modifiers: .command)
+            Button("Compile") { selection = .compile }
+                .keyboardShortcut("2", modifiers: .command)
+        }
+        .opacity(0)
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 
     /// After midnight, a window left on the old today moves to the new one; a day the user picked stays.
