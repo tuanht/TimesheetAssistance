@@ -48,6 +48,9 @@ final class CompileViewModel: ObservableObject {
         ClientPlan.resolve(settings.settings.model, isDownloaded: models.isDownloaded)
     }
 
+    /// Gates both Compile and Retry.
+    var canCompile: Bool { clientPlan.isUsable && entryCount > 0 }
+
     /// Reads the day's entries and its saved result, if any.
     func load() {
         do {
@@ -77,7 +80,12 @@ final class CompileViewModel: ObservableObject {
     }
 
     func compile() async {
-        guard let client = makeClient() else { return }
+        let plan = clientPlan
+        guard let client = makeClient(plan) else {
+            // The model can change after the button was enabled; say why instead of doing nothing.
+            if case .unavailable(let reason) = plan { state = .failed(reason.message) }
+            return
+        }
         let snapshots: [EntrySnapshot]
         do {
             let entries = try Store.entries(on: day, in: context)
@@ -126,8 +134,8 @@ final class CompileViewModel: ObservableObject {
         pasteboard.setString(preview, forType: .string)
     }
 
-    private func makeClient() -> LLMClient? {
-        switch clientPlan {
+    private func makeClient(_ plan: ClientPlan) -> LLMClient? {
+        switch plan {
         case .local(let repoId):
             return models.client(for: repoId)
         case .endpoint(let config):

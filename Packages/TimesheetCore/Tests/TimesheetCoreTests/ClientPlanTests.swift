@@ -37,6 +37,18 @@ struct ClientPlanTests {
         #expect(ClientPlan.resolve(.endpoint(config), isDownloaded: { _ in false }) == .endpoint(config))
     }
 
+    @Test func onlyAResolvedClientIsUsable() {
+        #expect(ClientPlan.local(repoId: "org/m").isUsable)
+        #expect(ClientPlan.endpoint(endpoint("http://localhost:11434")).isUsable)
+        #expect(!ClientPlan.unavailable(.noModel).isUsable)
+        #expect(!ClientPlan.unavailable(.remoteNotConfirmed).isUsable)
+    }
+
+    @Test func unavailableMessagePointsToSetup() {
+        #expect(ClientPlan.Unavailable.notDownloaded.message
+            == "Set up a model first. The selected on-device model isn’t downloaded.")
+    }
+
     @Test func everyReasonHasANote() {
         for reason in [ClientPlan.Unavailable.noModel, .notDownloaded, .remoteNotConfirmed] {
             #expect(!reason.note.isEmpty)

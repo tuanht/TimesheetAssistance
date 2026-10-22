@@ -19,6 +19,14 @@ public enum ClientPlan: Equatable, Sendable {
             case .remoteNotConfirmed: "The endpoint is outside this Mac and network and hasn’t been confirmed."
             }
         }
+
+        /// Shown beside the disabled Compile button, and as the error if a compile starts anyway.
+        public var message: String { "Set up a model first. \(note)" }
+    }
+
+    public var isUsable: Bool {
+        if case .unavailable = self { return false }
+        return true
     }
 
     public static func resolve(_ selection: ModelSelection, isDownloaded: (String) -> Bool) -> ClientPlan {

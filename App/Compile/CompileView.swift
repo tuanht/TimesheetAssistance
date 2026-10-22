@@ -38,7 +38,7 @@ private struct CompileDayView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            CompileBar(model: model, confirmingReplace: $confirmingReplace)
+            CompileBar(model: model, onCompile: requestCompile)
                 .padding(.horizontal)
                 .padding(.vertical, 8)
             messages
@@ -75,7 +75,8 @@ private struct CompileDayView: View {
                         .foregroundStyle(.red)
                         .textSelection(.enabled)
                     Spacer()
-                    Button("Retry") { model.start() }
+                    Button("Retry", action: requestCompile)
+                        .disabled(!model.canCompile)
                 }
             }
             if let summary = IssueMessages.missingLinesSummary(model.issues) {
@@ -125,6 +126,11 @@ private struct CompileDayView: View {
         }
     }
 
+    /// Compile and Retry both ask before replacing a saved result, which may hold the user's edits.
+    private func requestCompile() {
+        if model.hasSavedResult { confirmingReplace = true } else { model.start() }
+    }
+
     private func copy() {
         model.copyToPasteboard()
         let token = UUID()
@@ -139,7 +145,7 @@ private struct CompileDayView: View {
 /// The Compile button, or the reason it can't run, or the running spinner with Cancel.
 private struct CompileBar: View {
     @ObservedObject var model: CompileViewModel
-    @Binding var confirmingReplace: Bool
+    let onCompile: () -> Void
     // Observed so the client plan is re-read when the model setting or a download changes.
     @EnvironmentObject private var settings: SettingsStore
     @EnvironmentObject private var models: MLXModelManager
@@ -155,12 +161,10 @@ private struct CompileBar: View {
                 Button("Cancel") { model.cancel() }
                     .keyboardShortcut(.cancelAction)
             } else {
-                Button("Compile") {
-                    if model.hasSavedResult { confirmingReplace = true } else { model.start() }
-                }
-                .disabled(!isUsable(plan) || model.entryCount == 0)
+                Button("Compile", action: onCompile)
+                    .disabled(!model.canCompile)
                 if case .unavailable(let reason) = plan {
-                    Text("Set up a model first. \(reason.note)")
+                    Text(reason.message)
                         .foregroundStyle(.secondary)
                     Button("Open Settings") {
                         settingsTab = "models"
@@ -173,11 +177,6 @@ private struct CompileBar: View {
             Spacer()
         }
         .font(.callout)
-    }
-
-    private func isUsable(_ plan: ClientPlan) -> Bool {
-        if case .unavailable = plan { return false }
-        return true
     }
 }
 
