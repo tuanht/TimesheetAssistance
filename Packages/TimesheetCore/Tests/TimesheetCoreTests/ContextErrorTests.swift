@@ -26,7 +26,7 @@ struct ContextErrorTests {
 
     @Test func notApprovedGitHub() {
         #expect(ContextError.notApproved(.github).userMessage
-            == "Your organization hasn't approved this app for GitHub. Ask an admin, or use a personal token instead.")
+            == "Your organization hasn't approved this app for GitHub. Ask an admin, or switch sign-in method in Settings › Integrations.")
     }
 
     @Test func notApprovedJira() {

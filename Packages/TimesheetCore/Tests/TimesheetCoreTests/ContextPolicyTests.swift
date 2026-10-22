@@ -28,13 +28,25 @@ struct ContextPolicyTests {
         #expect(ContextPolicy.onSave(current: [], stored: nil, hasSummary: false, edited: false) == ContextAction.none)
     }
 
+    @Test func blankEditedSameRefsDoesNothing() {
+        #expect(ContextPolicy.onSave(current: ["ABC-1"], stored: ["ABC-1"], hasSummary: false, edited: true) == ContextAction.none)
+    }
+
+    @Test func blankEditedChangedRefsFetchesWithoutConfirm() {
+        #expect(ContextPolicy.onSave(current: ["ABC-2"], stored: ["ABC-1"], hasSummary: false, edited: true) == .fetch)
+    }
+
     @Test func refreshEditedConfirms() {
-        #expect(ContextPolicy.onRefresh(current: ["ABC-1"], edited: true) == .confirmReplace)
-        #expect(ContextPolicy.onRefresh(current: ["ABC-1"], edited: false) == .fetch)
+        #expect(ContextPolicy.onRefresh(current: ["ABC-1"], hasSummary: true, edited: true) == .confirmReplace)
+        #expect(ContextPolicy.onRefresh(current: ["ABC-1"], hasSummary: true, edited: false) == .fetch)
+    }
+
+    @Test func refreshBlankEditedFetches() {
+        #expect(ContextPolicy.onRefresh(current: ["ABC-1"], hasSummary: false, edited: true) == .fetch)
     }
 
     @Test func refreshEmptyDoesNothing() {
-        #expect(ContextPolicy.onRefresh(current: [], edited: true) == ContextAction.none)
+        #expect(ContextPolicy.onRefresh(current: [], hasSummary: true, edited: true) == ContextAction.none)
     }
 
     @Test func applyRejectsWhenRefsChanged() {

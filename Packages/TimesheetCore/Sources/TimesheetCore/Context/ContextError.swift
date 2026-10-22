@@ -23,7 +23,7 @@ public enum ContextError: Error, Equatable, Sendable {
         case .signInAgain(let service):
             "Sign in to \(service.displayName) again in Settings › Integrations."
         case .notApproved(.github):
-            "Your organization hasn't approved this app for GitHub. Ask an admin, or use a personal token instead."
+            "Your organization hasn't approved this app for GitHub. Ask an admin, or switch sign-in method in Settings › Integrations."
         case .notApproved(.jira):
             "Your organization hasn't enabled this for Jira. Ask an admin, or switch sign-in method in Settings › Integrations."
         case .unexpectedReply(let service):
