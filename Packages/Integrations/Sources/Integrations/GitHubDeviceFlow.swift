@@ -22,6 +22,7 @@ public struct GitHubDeviceFlow: Sendable {
     static let codeURL = URL(string: "https://github.com/login/device/code")!
     static let tokenURL = URL(string: "https://github.com/login/oauth/access_token")!
     static let grantType = "urn:ietf:params:oauth:grant-type:device_code"
+    static let maxInterval = 120
 
     private let clientId: String
     private let session: URLSession
@@ -49,9 +50,11 @@ public struct GitHubDeviceFlow: Sendable {
               case .string(let userCode)? = reply["user_code"],
               case .string(let uri)? = reply["verification_uri"],
               let url = URL(string: uri), url.scheme == "https", url.host == "github.com",
-              case .number(let interval)? = reply["interval"], interval >= 1
+              // Bounded so a bogus value can neither trap `Int(_:)` nor stall polling.
+              case .number(let seconds)? = reply["interval"], let interval = Int(exactly: seconds),
+              (1...Self.maxInterval).contains(interval)
         else { throw ContextError.unexpectedReply(.github) }
-        return DeviceCode(userCode: userCode, verificationURL: url, interval: Int(interval), deviceCode: deviceCode)
+        return DeviceCode(userCode: userCode, verificationURL: url, interval: interval, deviceCode: deviceCode)
     }
 
     public func poll(_ code: DeviceCode) async throws -> OAuthToken {

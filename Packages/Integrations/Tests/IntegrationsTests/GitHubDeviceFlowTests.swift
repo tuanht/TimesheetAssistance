@@ -108,6 +108,15 @@ struct GitHubDeviceFlowTests {
         await #expect(throws: ContextError.unexpectedReply(.github)) { try await flow.start() }
     }
 
+    @Test(arguments: ["0", "1.5", "121", "1000000000", "1e20", "-5", "\"5\""])
+    func startRejectsBadInterval(interval: String) async {
+        let flow = Self.flow([(200, """
+            {"device_code":"d","user_code":"u","verification_uri":"https://github.com/login/device",\
+            "interval":\(interval)}
+            """)])
+        await #expect(throws: ContextError.unexpectedReply(.github)) { try await flow.start() }
+    }
+
     @Test func pollWaitsThenSucceeds() async throws {
         let recorder = SleepRecorder()
         let now = Date(timeIntervalSince1970: 1_000_000)

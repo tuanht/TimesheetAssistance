@@ -40,6 +40,8 @@ public struct StoredOAuthCredentials: CredentialProvider {
         key: TokenKey, service: IntegrationService, store: any TokenStore,
         now: @escaping @Sendable () -> Date = Date.init
     ) {
+        // A mismatch would offer one service's token to the other's host.
+        precondition(key.service == service, "OAuth token key must belong to the service")
         self.key = key
         self.service = service
         self.store = store
