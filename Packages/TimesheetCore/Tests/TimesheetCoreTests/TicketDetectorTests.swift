@@ -17,4 +17,16 @@ struct TicketDetectorTests {
     @Test func emptyPatternIsNil() {
         #expect(TicketDetector.firstTicket(in: "ABC-123", pattern: "") == nil)
     }
+
+    @Test func emptyMatchIsNil() {
+        #expect(TicketDetector.firstTicket(in: "xyz", pattern: "a*") == nil)
+    }
+
+    @Test func blankMatchIsNil() {
+        #expect(TicketDetector.firstTicket(in: "a   b", pattern: #"\s+"#) == nil)
+    }
+
+    @Test func matchIsTrimmed() {
+        #expect(TicketDetector.firstTicket(in: "see ABC-1 today", pattern: #"\s[A-Z]+-\d+\s"#) == "ABC-1")
+    }
 }
