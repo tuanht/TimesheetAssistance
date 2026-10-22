@@ -71,19 +71,14 @@ private struct LineFields {
     var classification: String
 
     static let skippedMinutes = 30
-    static let skippedDescriptionLength = 80
 
     init(entry: EntrySnapshot, item: ModelItem?, ticketPattern: String) {
-        // Entry's own ticket first, then a pattern match in its text, then the model's.
-        let knownTicket = LineFields.nonBlank(entry.ticketRef)
-            ?? TicketDetector.firstTicket(in: entry.text, pattern: ticketPattern)
+        ticket = LineFields.ticket(entry: entry, modelTicket: item?.ticket, pattern: ticketPattern)
         guard let item else {
             // Model skipped the entry: keep it, with empty fields the validator will flag.
             estimatedMinutes = LineFields.skippedMinutes
             fixed = nil
-            description = String(entry.text.trimmingCharacters(in: .whitespacesAndNewlines)
-                .prefix(LineFields.skippedDescriptionLength))
-            ticket = knownTicket
+            description = entry.text.trimmingCharacters(in: .whitespacesAndNewlines)
             activityType = ""
             classification = ""
             return
@@ -96,9 +91,19 @@ private struct LineFields {
             fixed = nil
         }
         description = item.description.trimmingCharacters(in: .whitespacesAndNewlines)
-        ticket = knownTicket ?? LineFields.nonBlank(item.ticket)
         activityType = item.activityType
         classification = item.classification
+    }
+
+    /// Entry's own ticket first, then the model's if the text contains it, then the first
+    /// text match, then the model's. Checking the model against the text keeps look-alikes
+    /// such as `UTF-8` from beating the real ticket.
+    private static func ticket(entry: EntrySnapshot, modelTicket: String?, pattern: String) -> String? {
+        if let own = nonBlank(entry.ticketRef) { return own }
+        let found = TicketDetector.tickets(in: entry.text, pattern: pattern)
+        let model = nonBlank(modelTicket)
+        if let model, found.contains(model) { return model }
+        return found.first ?? model
     }
 
     private static func nonBlank(_ s: String?) -> String? {

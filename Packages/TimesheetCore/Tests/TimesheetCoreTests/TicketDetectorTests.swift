@@ -29,4 +29,22 @@ struct TicketDetectorTests {
     @Test func matchIsTrimmed() {
         #expect(TicketDetector.firstTicket(in: "see ABC-1 today", pattern: #"\s[A-Z]+-\d+\s"#) == "ABC-1")
     }
+
+    @Test func ticketsListsAllMatchesInOrder() {
+        #expect(TicketDetector.tickets(in: "Fixed UTF-8 for ABC-12 and XY-9", pattern: #"[A-Z][A-Z0-9]+-\d+"#)
+            == ["UTF-8", "ABC-12", "XY-9"])
+    }
+
+    @Test func ticketsSkipsBlankMatches() {
+        #expect(TicketDetector.tickets(in: "fix 123", pattern: #"\d*"#) == ["123"])
+    }
+
+    @Test func ticketsInvalidOrEmptyPatternIsEmpty() {
+        #expect(TicketDetector.tickets(in: "ABC-123", pattern: "[").isEmpty)
+        #expect(TicketDetector.tickets(in: "ABC-123", pattern: "").isEmpty)
+    }
+
+    @Test func firstTicketSkipsLeadingBlankMatch() {
+        #expect(TicketDetector.firstTicket(in: "fix 123", pattern: #"\d*"#) == "123")
+    }
 }
