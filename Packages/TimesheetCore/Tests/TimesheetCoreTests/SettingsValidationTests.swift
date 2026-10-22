@@ -209,4 +209,14 @@ struct EndpointValidationTests {
         let url = URL(string: "https://api.example.com")!
         #expect(SettingsValidation.testConnectionKey(field: "", storedKey: "stored", url: url, saved: saved) == nil)
     }
+
+    // MARK: Integrations
+
+    @Test func defaultRepoValidation() {
+        let message = "Use the form owner/repo, for example acme/web."
+        #expect(SettingsValidation.defaultRepoError("") == nil)
+        #expect(SettingsValidation.defaultRepoError("acme/web") == nil)
+        #expect(SettingsValidation.defaultRepoError("acme") == message)
+        #expect(SettingsValidation.defaultRepoError("https://github.com/acme/web") == message)
+    }
 }
