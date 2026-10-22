@@ -40,5 +40,6 @@ struct SettingsView: View {
             .padding(.vertical, session.isPersistent && session.saveError == nil ? 0 : 8)
         }
         .frame(width: 560, height: 600)
+        .background(OpensBesideMainWindow())
     }
 }
