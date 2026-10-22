@@ -41,6 +41,7 @@ private struct EntryList: View {
     let range: DayRange
 
     @Environment(\.modelContext) private var context
+    @EnvironmentObject private var coordinator: ContextCoordinator
     @Query private var entries: [LogEntry]
     @State private var selection: LogEntry.ID?
     @State private var editor: EditorTarget?
@@ -57,13 +58,15 @@ private struct EntryList: View {
     }
 
     var body: some View {
+        // Read once per render: each check reads the Keychain.
+        let connected = IntegrationService.allCases.contains(where: coordinator.isConnected)
         List(selection: $selection) {
             if kind == .day {
-                ForEach(entries) { EntryRow(entry: $0) }
+                ForEach(entries) { EntryRow(entry: $0, isAnyConnected: connected) }
             } else {
                 ForEach(daysWithEntries, id: \.key) { day in
                     Section(day.date.formatted(.dateTime.weekday(.wide).month(.abbreviated).day())) {
-                        ForEach(day.entries) { EntryRow(entry: $0) }
+                        ForEach(day.entries) { EntryRow(entry: $0, isAnyConnected: connected) }
                     }
                 }
             }
@@ -183,24 +186,29 @@ private struct EntryList: View {
 
 private struct EntryRow: View {
     let entry: LogEntry
+    let isAnyConnected: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
-            HStack(spacing: 8) {
-                Text(entry.type.displayName).font(.headline)
-                if let ticket = entry.ticketRef {
-                    Text(ticket).font(.body.monospaced()).foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 8) {
+                    Text(entry.type.displayName).font(.headline)
+                    if let ticket = entry.ticketRef {
+                        Text(ticket).font(.body.monospaced()).foregroundStyle(.secondary)
+                    }
+                    if let hint = entry.durationHint {
+                        Text(hint).foregroundStyle(.secondary)
+                    }
                 }
-                if let hint = entry.durationHint {
-                    Text(hint).foregroundStyle(.secondary)
-                }
+                Text(firstTwoLines)
+                    .lineLimit(2)
+                    .foregroundStyle(.primary)
             }
-            Text(firstTwoLines)
-                .lineLimit(2)
-                .foregroundStyle(.primary)
+            .accessibilityElement(children: .combine)
+            // Outside the combined element so Retry and Fetch details stay separate buttons.
+            EntryContextView(entry: entry, isAnyConnected: isAnyConnected)
         }
         .padding(.vertical, 2)
-        .accessibilityElement(children: .combine)
     }
 
     private var firstTwoLines: String {

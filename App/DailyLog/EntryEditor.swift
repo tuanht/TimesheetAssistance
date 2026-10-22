@@ -2,6 +2,12 @@ import SwiftData
 import SwiftUI
 import TimesheetCore
 
+/// A saved entry whose new references would replace an edited summary, and those references.
+private struct PendingReplace {
+    let entry: LogEntry
+    let refs: [String]
+}
+
 /// Sheet that creates a new entry on the picked day, or edits `entry` in place.
 struct EntryEditor: View {
     let entry: LogEntry?
@@ -11,12 +17,20 @@ struct EntryEditor: View {
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var store: SettingsStore
+    @EnvironmentObject private var coordinator: ContextCoordinator
     @State private var day: Date
     @State private var type: EntryType
     @State private var ticketRef: String
     @State private var durationHint: String
     @State private var text: String
+    @State private var summary: String
+    /// The stored summary as last loaded, so only a change the user typed marks it edited.
+    @State private var loadedSummary: String
     @State private var saveError: String?
+    /// The saved entry and refs awaiting "Replace" or "Keep" after a save.
+    @State private var pendingReplace: PendingReplace?
+    @State private var confirmingReplace = false
+    @State private var confirmingRefresh = false
 
     /// A new entry starts on `defaultDay`; an existing one on the day of its `dayKey`.
     init(defaultDay: Date, entry: LogEntry?) {
@@ -27,6 +41,8 @@ struct EntryEditor: View {
         _ticketRef = State(initialValue: entry?.ticketRef ?? "")
         _durationHint = State(initialValue: entry?.durationHint ?? "")
         _text = State(initialValue: entry?.text ?? "")
+        _summary = State(initialValue: entry?.contextSummary ?? "")
+        _loadedSummary = State(initialValue: entry?.contextSummary ?? "")
     }
 
     var body: some View {
@@ -43,6 +59,7 @@ struct EntryEditor: View {
                                    accessibilityLabel: "Day")
                 }
                 TextField("Ticket", text: $ticketRef, prompt: Text(ticketPrompt))
+                linkedLine
                 TextField("Duration hint", text: $durationHint, prompt: Text("e.g. ~2h"))
             }
             Text("Text").font(.headline)
@@ -51,6 +68,7 @@ struct EntryEditor: View {
                 .frame(minHeight: 220)
                 .border(.separator)
                 .accessibilityLabel("Entry text")
+            contextSection
             if let saveError {
                 Text(saveError).foregroundStyle(.red)
             }
@@ -64,7 +82,64 @@ struct EntryEditor: View {
             }
         }
         .padding(20)
-        .frame(minWidth: 520, idealWidth: 600, minHeight: 440)
+        .frame(minWidth: 520, idealWidth: 600, minHeight: 600)
+        // A finished job updates the stored summary; show it unless the user has typed over it.
+        .onChange(of: entry?.contextSummary) { _, stored in
+            if summary == loadedSummary { summary = stored ?? "" }
+            loadedSummary = stored ?? ""
+        }
+        .confirmationDialog("References changed. Replace your edited summary?", isPresented: $confirmingReplace,
+                            titleVisibility: .visible, presenting: pendingReplace) { pending in
+            Button("Replace", role: .destructive) { finishReplace(pending, replace: true) }
+            Button("Keep", role: .cancel) { finishReplace(pending, replace: false) }
+        }
+        .confirmationDialog("Replace your edited summary?", isPresented: $confirmingRefresh,
+                            titleVisibility: .visible) {
+            Button("Replace", role: .destructive) { startRefresh() }
+            Button("Keep", role: .cancel) {}
+        }
+    }
+
+    /// The references the entry would be fetched for, live as the user types. Hidden when there are none.
+    @ViewBuilder
+    private var linkedLine: some View {
+        let detected = liveReferences
+        if !detected.linkedLine.isEmpty {
+            LabeledContent("Linked") {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(detected.linkedLine).textSelection(.enabled)
+                    if detected.overflowed {
+                        Text(ContextCoordinator.overflowMessage).foregroundStyle(.secondary)
+                    }
+                }
+            }
+        }
+    }
+
+    /// The editable summary, the references it was built from, and Refresh.
+    private var contextSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Context").font(.headline)
+            TextEditor(text: $summary)
+                .font(.body)
+                .frame(minHeight: 80)
+                .border(.separator)
+                .accessibilityLabel("Context summary")
+            HStack(alignment: .firstTextBaseline) {
+                if let refs = entry?.contextRefs, !refs.isEmpty {
+                    Text("From \(refs.joined(separator: " · "))").foregroundStyle(.secondary)
+                }
+                if let id = entry?.id, let status = coordinator.status[id] {
+                    Text(status.text).foregroundStyle(.secondary)
+                }
+                Spacer()
+                Button("Refresh", action: requestRefresh)
+                    .disabled(!canRefresh)
+                    .help(canRefresh ? "Fetch the saved references again and rewrite the summary."
+                                     : "Save references and connect Jira or GitHub in Settings › Integrations.")
+            }
+            .font(.callout)
+        }
     }
 
     /// Hints at the ticket the compiler would find in the text when the field is left blank.
@@ -83,22 +158,106 @@ struct EntryEditor: View {
         guard !isTextBlank else { return }
         let ticket = Self.optional(ticketRef)
         let hint = Self.optional(durationHint)
+        let saved: LogEntry
         if let entry {
             entry.type = type
             entry.ticketRef = ticket
             entry.durationHint = hint
             entry.text = text
             if DayKey.string(for: day) != DayKey.string(for: initialDay) { entry.move(to: day) }
+            saved = entry
         } else {
-            context.insert(LogEntry(day: day, type: type, ticketRef: ticket, durationHint: hint, text: text))
+            saved = LogEntry(day: day, type: type, ticketRef: ticket, durationHint: hint, text: text)
+            context.insert(saved)
+        }
+        // Only a change typed here marks the summary edited; a fetched summary never does.
+        if summary != loadedSummary {
+            saved.contextSummary = Self.optional(summary) == nil ? nil : summary
+            saved.contextEdited = true
         }
         do {
             try context.save()
-            dismiss()
         } catch {
             context.rollback()
             saveError = "Could not save: \(error.localizedDescription)"
+            return
         }
+        applyContextPolicy(to: saved)
+    }
+
+    /// After the entry is saved: fetch, clear, ask, or record the refs so an older in-flight job is dropped.
+    /// The policy compares against the stored refs before they are overwritten.
+    private func applyContextPolicy(to saved: LogEntry) {
+        let current = references(for: saved).canonical
+        let action = ContextPolicy.onSave(
+            current: current, stored: saved.contextRefs,
+            hasSummary: Self.optional(saved.contextSummary ?? "") != nil, edited: saved.contextEdited)
+        switch action {
+        case .fetch:
+            coordinator.enqueue(saved)
+        case .clear:
+            coordinator.clear(saved)
+        case .confirmReplace:
+            pendingReplace = PendingReplace(entry: saved, refs: current)
+            confirmingReplace = true
+            return
+        case .none:
+            keepRefs(current, on: saved)
+        }
+        dismiss()
+    }
+
+    private func finishReplace(_ pending: PendingReplace, replace: Bool) {
+        pendingReplace = nil
+        if replace { coordinator.enqueue(pending.entry) } else { keepRefs(pending.refs, on: pending.entry) }
+        dismiss()
+    }
+
+    /// Records `refs` as the summary's source. The entry itself is already saved, so a failure here
+    /// leaves the refs in memory for the next save.
+    private func keepRefs(_ refs: [String], on saved: LogEntry) {
+        guard saved.contextRefs != refs else { return }
+        saved.contextRefs = refs
+        try? context.save()
+    }
+
+    // MARK: - Refresh
+
+    /// Refresh fetches the saved entry's references, which is what the coordinator reads.
+    private var canRefresh: Bool {
+        guard let entry, !references(for: entry).references.isEmpty else { return false }
+        return IntegrationService.allCases.contains(where: coordinator.isConnected)
+    }
+
+    private func requestRefresh() {
+        guard let entry else { return }
+        let edited = (entry.contextEdited && Self.optional(entry.contextSummary ?? "") != nil) || summary != loadedSummary
+        switch ContextPolicy.onRefresh(current: references(for: entry).canonical, edited: edited) {
+        case .fetch: startRefresh()
+        case .confirmReplace: confirmingRefresh = true
+        case .none, .clear: break
+        }
+    }
+
+    /// Drops any unsaved summary edit, so the new summary shows here when it arrives.
+    private func startRefresh() {
+        guard let entry else { return }
+        summary = loadedSummary
+        coordinator.enqueue(entry)
+    }
+
+    // MARK: - References
+
+    private var liveReferences: DetectedReferences {
+        ReferenceDetector.detect(ticketRef: Self.optional(ticketRef), text: text,
+                                 ticketPattern: store.settings.template.ticketPattern,
+                                 defaultRepo: store.settings.integrations.defaultRepo)
+    }
+
+    private func references(for entry: LogEntry) -> DetectedReferences {
+        ReferenceDetector.detect(ticketRef: entry.ticketRef, text: entry.text,
+                                 ticketPattern: store.settings.template.ticketPattern,
+                                 defaultRepo: store.settings.integrations.defaultRepo)
     }
 
     /// Reads a `yyyy-MM-dd` day key as that date in the current time zone; nil if it doesn't parse.
