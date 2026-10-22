@@ -15,6 +15,9 @@ A native macOS SwiftUI app (Apple Silicon, macOS 15+). It compiles private daily
 # Core tests (fast; run these after any core change)
 swift test --package-path Packages/TimesheetCore
 
+# Integrations tests (MCP client)
+swift test --package-path Packages/Integrations
+
 # LocalModels tests (need Metal shaders, so run through xcodebuild)
 cd Packages/LocalModels && xcodebuild test -scheme LocalModels -destination 'platform=macOS'
 
@@ -38,6 +41,7 @@ swift scripts/render-icon.swift
   - `MLXModelManager` handles download, delete and `isDownloaded`, and keeps at most one model loaded.
   - `MLXClient` conforms to `LLMClient`.
   - `HubDownloader` is our own minimal Hugging Face downloader. It stages each download and moves it into place only when every file has arrived.
+- **`Packages/Integrations`** holds the read-only MCP client (`MCPClient`, Streamable HTTP) for Jira and GitHub context. It depends on TimesheetCore only.
 - **`App/`** is a thin SwiftUI layer: `DailyLog/`, `Compile/` and `Settings/`.
   - One `SettingsSession` / `SettingsStore` is injected into both the main window and the Settings scene.
   - The Settings tab is selected with `@AppStorage("settingsTab")`.
@@ -58,9 +62,12 @@ swift scripts/render-icon.swift
 These come from the spec and from review rulings. Don't regress them.
 
 - **Privacy:**
-  - No network calls except user-initiated Hugging Face downloads and the configured endpoint. No telemetry.
+  - No network calls except user-initiated Hugging Face downloads, the configured endpoint, the Atlassian and GitHub MCP hosts (`MCPServer.atlassian`, `MCPServer.github`) and their OAuth traffic. No telemetry.
+  - Only reference identifiers (`ABC-123`, `owner/repo#45`) go to Atlassian and GitHub. Entry text, notes and summaries never do.
+  - Only allow-listed read tools (`MCPServer.allowedTools`) may be called. Anything else throws before any request.
+  - A credential is attached only to a request whose host equals its service's MCP host.
   - Keep `cloudKitDatabase: .none`.
-  - The endpoint client refuses redirects.
+  - The endpoint client and the MCP client refuse redirects.
 - **Remote endpoints:** they need https and `remoteConfirmed`. `ClientPlan` refuses an unconfirmed non-local endpoint.
 - **API key:** the stored key is only sent to the saved endpoint's host. Credentials in URLs are rejected.
 - **Model weights:** download them at runtime only. Never bundle them in the `.app` or a DMG.
