@@ -23,11 +23,19 @@ struct TemplateTab: View {
             }
             Section("Text") {
                 ValidatedField("Separator", saved: template.separator,
-                               validate: SettingsValidation.separatorError) { v in
+                               validate: { v in
+                                   // The pair must stay valid whichever side changes.
+                                   SettingsValidation.separatorError(v)
+                                       ?? SettingsValidation.separatorSubstituteError(
+                                           template.separatorSubstitute, separator: v)
+                                       .map { _ in "The separator substitute contains this separator." }
+                               }) { v in
                     session.update { $0.template.separator = v }
                 }
                 ValidatedField("Separator substitute", saved: template.separatorSubstitute,
-                               validate: { _ in nil }) { v in
+                               validate: { v in
+                                   SettingsValidation.separatorSubstituteError(v, separator: template.separator)
+                               }) { v in
                     session.update { $0.template.separatorSubstitute = v }
                 }
                 ValidatedField("Empty ticket placeholder", saved: template.emptyTicketPlaceholder,

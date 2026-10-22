@@ -5,11 +5,25 @@ import Testing
 struct SettingsValidationTests {
     // MARK: Template
 
-    @Test func separatorRejectsBlank() {
+    @Test func separatorRejectsOnlyEmpty() {
         #expect(SettingsValidation.separatorError("") != nil)
-        #expect(SettingsValidation.separatorError("   ") != nil)
+        #expect(SettingsValidation.separatorError(" ") == nil)
+        #expect(SettingsValidation.separatorError("\t") == nil)
         #expect(SettingsValidation.separatorError(";") == nil)
         #expect(SettingsValidation.separatorError(" | ") == nil)
+    }
+
+    @Test func separatorSubstituteRejectsEmpty() {
+        #expect(SettingsValidation.separatorSubstituteError("", separator: " | ") != nil)
+        #expect(SettingsValidation.separatorSubstituteError("/", separator: " | ") == nil)
+    }
+
+    @Test func separatorSubstituteRejectsContainingSeparator() {
+        #expect(SettingsValidation.separatorSubstituteError(" | ", separator: " | ") != nil)
+        #expect(SettingsValidation.separatorSubstituteError("a;b", separator: ";") != nil)
+        #expect(SettingsValidation.separatorSubstituteError(" / ", separator: "\t") == nil)
+        // Only the exact separator string counts: "|" does not contain " | ".
+        #expect(SettingsValidation.separatorSubstituteError("|", separator: " | ") == nil)
     }
 
     @Test func formatRejectsBlank() {
@@ -50,6 +64,11 @@ struct SettingsValidationTests {
 
     @Test func listErrorsAllNilForValidList() {
         #expect(SettingsValidation.listErrors(["A", "B"]) == [nil, nil])
+    }
+
+    @Test func listMustKeepAtLeastOneValue() {
+        #expect(SettingsValidation.listCountError([]) != nil)
+        #expect(SettingsValidation.listCountError(["Only"]) == nil)
     }
 
     @Test func newListValueRejectsBlankAndDuplicates() {

@@ -15,8 +15,18 @@ public enum SettingsValidation {
 
     // MARK: Template
 
+    /// Only the empty string is rejected; whitespace such as a tab is a valid separator.
     public static func separatorError(_ separator: String) -> String? {
-        isBlank(separator) ? "The separator can't be blank." : nil
+        separator.isEmpty ? "The separator can't be empty." : nil
+    }
+
+    /// A substitute that is empty or contains the separator would let the separator leak into field values.
+    public static func separatorSubstituteError(_ substitute: String, separator: String) -> String? {
+        if substitute.isEmpty { return "The separator substitute can't be empty." }
+        if !separator.isEmpty, substitute.contains(separator) {
+            return "The separator substitute can't contain the separator."
+        }
+        return nil
     }
 
     public static func formatError(_ format: String) -> String? {
@@ -55,6 +65,10 @@ public enum SettingsValidation {
             if !seen.insert(key).inserted { return "“\(trimmed(value))” is already in the list." }
             return nil
         }
+    }
+
+    public static func listCountError(_ values: [String]) -> String? {
+        values.isEmpty ? "The list must keep at least one value." : nil
     }
 
     public static func newListValueError(_ value: String, existing: [String]) -> String? {

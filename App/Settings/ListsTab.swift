@@ -48,7 +48,11 @@ private struct EditableList: View {
                     .tag(row.id)
                 }
                 .onMove { rows.move(fromOffsets: $0, toOffset: $1) }
-                .onDelete { rows.remove(atOffsets: $0) }
+                .onDelete { offsets in
+                    // Same rule as the minus button: the last value stays.
+                    guard rows.count > offsets.count else { return }
+                    rows.remove(atOffsets: offsets)
+                }
             }
             .frame(minHeight: 260)
             HStack {
@@ -61,15 +65,18 @@ private struct EditableList: View {
                     .accessibilityLabel("Move down")
                     .help("Move down")
                 Button { removeSelected() } label: { Image(systemName: "minus") }
-                    .disabled(selection == nil)
+                    .disabled(selection == nil || isLastValue)
                     .accessibilityLabel("Delete selected value")
-                    .help("Delete selected value")
+                    .help(isLastValue ? lastValueReason : "Delete selected value")
             }
             HStack {
                 TextField("New value", text: $newValue)
                     .onSubmit(add)
                     .onChange(of: newValue) { addError = nil }
                 Button("Add", action: add)
+            }
+            if isLastValue {
+                Text(lastValueReason).font(.caption).foregroundStyle(.secondary)
             }
             if let addError {
                 Text(addError).font(.caption).foregroundStyle(.red)
@@ -81,7 +88,9 @@ private struct EditableList: View {
             rows = store.settings[keyPath: keyPath].map { Row(text: $0) }
         }
         .onChange(of: rows) { _, new in
-            guard SettingsValidation.listErrors(new.map(\.text)).allSatisfy({ $0 == nil }) else { return }
+            let texts = new.map(\.text)
+            guard SettingsValidation.listCountError(texts) == nil,
+                  SettingsValidation.listErrors(texts).allSatisfy({ $0 == nil }) else { return }
             let values = new.map { $0.text.trimmingCharacters(in: .whitespacesAndNewlines) }
             if values != store.settings[keyPath: keyPath] {
                 session.update { $0[keyPath: keyPath] = values }
@@ -98,8 +107,14 @@ private struct EditableList: View {
         newValue = ""
     }
 
+    private var isLastValue: Bool { rows.count <= 1 }
+
+    private var lastValueReason: String {
+        SettingsValidation.listCountError([]) ?? ""
+    }
+
     private func removeSelected() {
-        guard let i = rows.firstIndex(where: { $0.id == selection }) else { return }
+        guard !isLastValue, let i = rows.firstIndex(where: { $0.id == selection }) else { return }
         rows.remove(at: i)
         selection = nil
     }
