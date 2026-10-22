@@ -57,6 +57,19 @@ struct CompileView: View {
         return DayRange(from: customStart, to: customEnd)
     }
 
+    /// Switching to Custom starts From–To on the period that was showing, not on today.
+    /// Seeded before `kind` changes, so no stale custom range is loaded in between.
+    private var kindSelection: Binding<CompileRangeKind> {
+        Binding(get: { kind }, set: { newKind in
+            if newKind == .custom, let period = kind.period {
+                let shown = Period.range(period, containing: anchor)
+                customStart = shown.start
+                customEnd = shown.end
+            }
+            kind = newKind
+        })
+    }
+
     /// The period bar on the shared anchor, or From and To pickers; one Day|Week|Month|Custom picker either way.
     private var rangeBar: some View {
         HStack {
@@ -70,7 +83,7 @@ struct CompileView: View {
                                accessibilityLabel: "To")
                 Spacer()
             }
-            Picker("Range", selection: $kind) {
+            Picker("Range", selection: kindSelection) {
                 ForEach(CompileRangeKind.allCases, id: \.self) { option in
                     Text(option.displayName).tag(option)
                 }
