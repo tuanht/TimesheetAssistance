@@ -31,7 +31,12 @@ final class ContextCoordinator: ObservableObject {
         let edited: Bool
         let context: ModelContext
 
-        func repeats(_ other: Job) -> Bool { id == other.id && detected.canonical == other.detected.canonical }
+        /// Same entry, same refs and same summary state. A job started before the user edited the summary
+        /// would be rejected at apply, so it doesn't count as a repeat.
+        func repeats(_ other: Job) -> Bool {
+            id == other.id && detected.canonical == other.detected.canonical
+                && summary == other.summary && edited == other.edited
+        }
     }
 
     /// One MCP client per service, rebuilt only when what its credentials depend on changes.
@@ -221,7 +226,7 @@ final class ContextCoordinator: ObservableObject {
                 fail(ContextError.notConnected(service).userMessage)
                 continue
             }
-            status[job.id] = .fetching(reference.canonical)
+            guard update(job, .fetching(reference.canonical)) else { return }
             // One fetcher per service per job, so a failed Jira site lookup isn't repeated per ref.
             let made: Result<any ContextFetcher, Error>
             if let cached = fetchers[service] {
@@ -239,7 +244,7 @@ final class ContextCoordinator: ObservableObject {
         if job.detected.overflowed { fail(Self.overflowMessage) }
         guard !sources.isEmpty else { return finish(job, failures: failures) }
 
-        status[job.id] = .summarizing
+        guard update(job, .summarizing) else { return }
         let summary: String
         do {
             summary = try await summarize(sources)
@@ -291,10 +296,21 @@ final class ContextCoordinator: ObservableObject {
         }
     }
 
-    /// Leaves the status to a newer job for the same entry, if one is queued.
     private func finish(_ job: Job, failures: [String]) {
-        guard !queue.contains(where: { $0.id == job.id }) else { return }
-        status[job.id] = failures.isEmpty ? nil : .failed(failures)
+        update(job, failures.isEmpty ? nil : .failed(failures))
+    }
+
+    /// Writes a running job's status. Returns false when the job is stale: a newer job for the entry
+    /// is queued (it owns the status), or the entry was deleted or its refs changed (status removed).
+    @discardableResult
+    private func update(_ job: Job, _ new: ContextStatus?) -> Bool {
+        guard !queue.contains(where: { $0.id == job.id }) else { return false }
+        guard let entry = Self.entry(job.id, in: job.context), entry.contextRefs == job.detected.canonical else {
+            status[job.id] = nil
+            return false
+        }
+        status[job.id] = new
+        return true
     }
 
     private static func entry(_ id: UUID, in context: ModelContext) -> LogEntry? {

@@ -8,9 +8,11 @@ actor ModelGate {
     private var busy = false
     private var waiters: [CheckedContinuation<Void, Never>] = []
 
-    func run<T: Sendable>(_ work: @Sendable () async throws -> T) async rethrows -> T {
+    /// Throws `CancellationError` without running `work` when the caller was cancelled while waiting.
+    func run<T: Sendable>(_ work: @Sendable () async throws -> T) async throws -> T {
         await acquire()
         defer { release() }
+        try Task.checkCancellation()
         return try await work()
     }
 
