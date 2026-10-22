@@ -42,6 +42,8 @@ struct RootView: View {
                 .labelsHidden()
             }
         }
+        // The centered tabs already name the page; the title stays set for the Window menu and Mission Control.
+        .toolbar(removing: .title)
         .background { tabShortcuts }
         .frame(minWidth: 720, minHeight: 440)
         .onReceive(NotificationCenter.default.publisher(for: .NSCalendarDayChanged).receive(on: RunLoop.main)) { _ in
