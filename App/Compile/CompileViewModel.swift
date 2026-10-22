@@ -37,7 +37,7 @@ final class CompileViewModel: ObservableObject {
         return false
     }
 
-    var isSingleDay: Bool { range.start == range.end }
+    var isSingleDay: Bool { range.keys().count == 1 }
 
     /// Every line, in day order then by start.
     var lines: [DatedLine] {
@@ -133,7 +133,14 @@ final class CompileViewModel: ObservableObject {
                 guard let at = days.firstIndex(where: { DayKey.string(for: $0.day) == item.key }) else { continue }
                 days[at].lines = result.lines
                 days[at].issues = result.issues
-                save(at, compiledAt: Date())
+                do {
+                    try persist(at, compiledAt: Date())
+                } catch {
+                    // Stop here: a later day's save must not hide this one's failure.
+                    let date = Period.label(.day, anchor: item.day)
+                    state = .failed("\(date): Couldn’t save the compiled lines: \(error.localizedDescription)")
+                    return
+                }
             } catch {
                 // A cancelled compile leaves state to `cancel()` or the compile that replaced it.
                 if Task.isCancelled { return }
@@ -146,10 +153,7 @@ final class CompileViewModel: ObservableObject {
     }
 
     func revalidate() {
-        for index in days.indices {
-            days[index].issues = LineValidator.validate(
-                days[index].lines, entryIds: days[index].entryIds, settings: settings.settings)
-        }
+        days.indices.forEach(revalidate)
     }
 
     /// Applies an edit to one row in place, re-validates and saves its day. Reads the row fresh,
@@ -218,8 +222,19 @@ final class CompileViewModel: ObservableObject {
         }
     }
 
-    /// Upserts one day's `CompiledDay`; `compiledAt` is kept for edits and set for a fresh compile.
+    /// Saves an edit or delete; a failure is shown as `storeError`.
     private func save(_ at: Int, compiledAt: Date?) {
+        do {
+            try persist(at, compiledAt: compiledAt)
+            storeError = nil
+        } catch {
+            storeError = "Couldn’t save the compiled lines: \(error.localizedDescription)"
+        }
+    }
+
+    /// Upserts one day's `CompiledDay`; `compiledAt` is kept for edits and set for a fresh compile.
+    /// Rolls back and rethrows on failure.
+    private func persist(_ at: Int, compiledAt: Date?) throws {
         let result = days[at]
         do {
             if let saved = try Store.compiled(on: result.day, in: context) {
@@ -230,10 +245,9 @@ final class CompileViewModel: ObservableObject {
             }
             try context.save()
             days[at].hasSaved = true
-            storeError = nil
         } catch {
             context.rollback()
-            storeError = "Couldn’t save the compiled lines: \(error.localizedDescription)"
+            throw error
         }
     }
 }
