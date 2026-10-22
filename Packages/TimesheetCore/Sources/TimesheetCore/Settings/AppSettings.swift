@@ -105,3 +105,64 @@ public struct AppSettings: Codable, Equatable, Sendable {
         workingHours: .default,
         model: .none)
 }
+
+// MARK: Decoding
+// Every field falls back to its default when absent, so a settings file written by an older or
+// newer version still loads instead of being reset.
+
+extension TemplateSettings {
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let d = TemplateSettings.default
+        self.init(
+            fields: try c.decodeIfPresent([TemplateField].self, forKey: .fields) ?? d.fields,
+            separator: try c.decodeIfPresent(String.self, forKey: .separator) ?? d.separator,
+            dateFormat: try c.decodeIfPresent(String.self, forKey: .dateFormat) ?? d.dateFormat,
+            timeFormat: try c.decodeIfPresent(String.self, forKey: .timeFormat) ?? d.timeFormat,
+            emptyTicketPlaceholder: try c.decodeIfPresent(String.self, forKey: .emptyTicketPlaceholder)
+                ?? d.emptyTicketPlaceholder,
+            separatorSubstitute: try c.decodeIfPresent(String.self, forKey: .separatorSubstitute)
+                ?? d.separatorSubstitute,
+            maxDescriptionLength: try c.decodeIfPresent(Int.self, forKey: .maxDescriptionLength)
+                ?? d.maxDescriptionLength,
+            ticketPattern: try c.decodeIfPresent(String.self, forKey: .ticketPattern) ?? d.ticketPattern)
+    }
+}
+
+extension WorkingHours {
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let d = WorkingHours.default
+        self.init(
+            start: try c.decodeIfPresent(ClockTime.self, forKey: .start) ?? d.start,
+            end: try c.decodeIfPresent(ClockTime.self, forKey: .end) ?? d.end,
+            lunchStart: try c.decodeIfPresent(ClockTime.self, forKey: .lunchStart) ?? d.lunchStart,
+            lunchEnd: try c.decodeIfPresent(ClockTime.self, forKey: .lunchEnd) ?? d.lunchEnd,
+            roundingMinutes: try c.decodeIfPresent(Int.self, forKey: .roundingMinutes) ?? d.roundingMinutes)
+    }
+}
+
+extension EndpointConfig {
+    /// `baseURL` and `model` have no default; without them the selection is unreadable and becomes `.none`.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            baseURL: try c.decode(URL.self, forKey: .baseURL),
+            model: try c.decode(String.self, forKey: .model),
+            remoteConfirmed: try c.decodeIfPresent(Bool.self, forKey: .remoteConfirmed) ?? false)
+    }
+}
+
+extension AppSettings {
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let d = AppSettings.default
+        self.init(
+            template: try c.decodeIfPresent(TemplateSettings.self, forKey: .template) ?? d.template,
+            activityTypes: try c.decodeIfPresent([String].self, forKey: .activityTypes) ?? d.activityTypes,
+            classifications: try c.decodeIfPresent([String].self, forKey: .classifications) ?? d.classifications,
+            workingHours: try c.decodeIfPresent(WorkingHours.self, forKey: .workingHours) ?? d.workingHours,
+            // An unknown or malformed selection (e.g. a source added later) means no model is chosen.
+            model: (try? c.decodeIfPresent(ModelSelection.self, forKey: .model)) ?? ModelSelection.none)
+    }
+}

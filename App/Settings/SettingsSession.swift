@@ -9,10 +9,15 @@ final class SettingsSession: ObservableObject {
     /// False when the settings file path could not be resolved; edits then live in memory only.
     let isPersistent: Bool
     @Published private(set) var saveError: String?
+    /// Shown once in the main window when the settings file couldn't be read and was reset.
+    @Published var resetNotice: String?
 
     init(store: SettingsStore, isPersistent: Bool) {
         self.store = store
         self.isPersistent = isPersistent
+        if let backup = store.resetBackupURL {
+            resetNotice = "Your settings couldn't be read and were reset. A backup was saved to \(backup.path)."
+        }
     }
 
     static func open() -> SettingsSession {

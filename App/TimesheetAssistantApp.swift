@@ -24,6 +24,16 @@ struct TimesheetAssistantApp: App {
             .environmentObject(settings.store)
             .environmentObject(settings)
             .environmentObject(models)
+            .alert(
+                "Settings were reset",
+                isPresented: Binding(
+                    get: { settings.resetNotice != nil },
+                    set: { if !$0 { settings.resetNotice = nil } })
+            ) {
+                Button("OK") { settings.resetNotice = nil }
+            } message: {
+                Text(settings.resetNotice ?? "")
+            }
         }
         .commands {
             // ⌘N belongs to "New Entry" in the daily log, not to a second window.
