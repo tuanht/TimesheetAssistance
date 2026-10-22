@@ -5,6 +5,8 @@ import TimesheetCore
 /// Sheet that creates a new entry on the picked day, or edits `entry` in place.
 struct EntryEditor: View {
     let entry: LogEntry?
+    /// The day the sheet opened on; the entry moves only when the user picks another.
+    private let initialDay: Date
 
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
@@ -19,7 +21,8 @@ struct EntryEditor: View {
     /// A new entry starts on `defaultDay`; an existing one on the day of its `dayKey`.
     init(defaultDay: Date, entry: LogEntry?) {
         self.entry = entry
-        _day = State(initialValue: entry.flatMap { Self.date(forKey: $0.dayKey) } ?? defaultDay)
+        initialDay = entry.flatMap { Self.date(forKey: $0.dayKey) } ?? defaultDay
+        _day = State(initialValue: initialDay)
         _type = State(initialValue: entry?.type ?? .ticket)
         _ticketRef = State(initialValue: entry?.ticketRef ?? "")
         _durationHint = State(initialValue: entry?.durationHint ?? "")
@@ -85,7 +88,7 @@ struct EntryEditor: View {
             entry.ticketRef = ticket
             entry.durationHint = hint
             entry.text = text
-            if entry.dayKey != DayKey.string(for: day) { entry.move(to: day) }
+            if DayKey.string(for: day) != DayKey.string(for: initialDay) { entry.move(to: day) }
         } else {
             context.insert(LogEntry(day: day, type: type, ticketRef: ticket, durationHint: hint, text: text))
         }
@@ -99,13 +102,13 @@ struct EntryEditor: View {
     }
 
     /// Reads a `yyyy-MM-dd` day key as that date in the current time zone; nil if it doesn't parse.
+    /// Built from components, so a day whose midnight falls in a DST gap still resolves.
     private static func date(forKey key: String) -> Date? {
-        let formatter = DateFormatter()
-        formatter.calendar = Calendar(identifier: .gregorian)
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = .current
-        formatter.dateFormat = "yyyy-MM-dd"
-        return formatter.date(from: key)
+        let parts = key.split(separator: "-").compactMap { Int($0) }
+        guard parts.count == 3 else { return nil }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = .current
+        return calendar.date(from: DateComponents(year: parts[0], month: parts[1], day: parts[2]))
     }
 
     /// Blank optional fields are stored as nil, not as empty strings.
