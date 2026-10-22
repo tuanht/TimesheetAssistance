@@ -95,21 +95,32 @@ public enum Scheduler {
         let hints = items.map { $0.hintMinutes.flatMap { $0 > 0 ? $0 : nil } }
         let share = free - hints.reduce(0) { $0 + ($1 ?? 0) }
         let unhinted = items.indices.filter { hints[$0] == nil }
-        let weightTotal = unhinted.reduce(0) { $0 + max(1, items[$1].estimatedMinutes) }
-
         var result = hints.map { $0 ?? 0 }
-        // Snap cumulative boundaries, not each share, so rounding error never accumulates past one unit
-        // and size order holds. Each item keeps a one-unit minimum even if that overflows the day.
-        var cumulativeWeight = 0
-        var previousBoundary = 0
-        for (n, i) in unhinted.enumerated() {
-            cumulativeWeight += max(1, items[i].estimatedMinutes)
-            let exact = Double(max(0, share)) * Double(cumulativeWeight) / Double(weightTotal)
-            let snapped = n == unhinted.count - 1 ? max(0, share) : Int((exact / Double(unit)).rounded()) * unit
-            let boundary = max(snapped, previousBoundary + unit)
-            result[i] = boundary - previousBoundary
-            previousBoundary = boundary
+        guard !unhinted.isEmpty else { return result }
+
+        let whole = max(0, share) / unit
+        guard whole >= unhinted.count else {
+            // Not enough room: one unit each, the validator flags the overflow.
+            for i in unhinted { result[i] = unit }
+            return result
         }
+
+        // One base unit each, then extra units by largest remainder (integer maths, so exact and
+        // monotone in weight; ties go to the earlier item). The sub-unit leftover goes to the last item.
+        // Clamped so `extra * weight` cannot overflow on an absurd model estimate.
+        let weights = unhinted.map { min(1_000_000, max(1, items[$0].estimatedMinutes)) }
+        let weightTotal = weights.reduce(0, +)
+        let extra = whole - unhinted.count
+        var units = weights.map { 1 + extra * $0 / weightTotal }
+        let leftover = whole - units.reduce(0, +)
+        let byRemainder = weights.indices.sorted {
+            let (ra, rb) = (extra * weights[$0] % weightTotal, extra * weights[$1] % weightTotal)
+            return ra != rb ? ra > rb : $0 < $1
+        }
+        for k in byRemainder.prefix(leftover) { units[k] += 1 }
+
+        for (k, i) in unhinted.enumerated() { result[i] = units[k] * unit }
+        result[unhinted[unhinted.count - 1]] += share - whole * unit
         return result
     }
 }

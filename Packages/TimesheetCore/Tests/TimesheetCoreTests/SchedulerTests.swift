@@ -120,6 +120,39 @@ struct SchedulerTests {
         for s in small { #expect(bigMinutes >= minutes(of: s.entryId, in: slots)) }
     }
 
+    func assertFillsDayAndMonotone(_ estimates: [Int]) {
+        let items = estimates.map { item($0) }
+        let slots = Scheduler.schedule(items, hours: hours)
+        #expect(slots.reduce(0) { $0 + $1.end.minutes - $1.start.minutes } == 450, "\(estimates)")
+        #expect(slots.last?.end == ClockTime(17, 30), "\(estimates)")
+        let given = items.map { minutes(of: $0.entryId, in: slots) }
+        for i in items.indices { for j in items.indices where estimates[i] > estimates[j] {
+            #expect(given[i] >= given[j], "\(estimates)")
+        } }
+    }
+
+    @Test(arguments: [[480, 5], [400, 5, 5], [84, 18, 18, 237, 32, 234, 141, 172]])
+    func dominantEstimateDoesNotOverbook(estimates: [Int]) {
+        assertFillsDayAndMonotone(estimates)
+    }
+
+    @Test func randomFittingDaysFillExactlyAndKeepSizeOrder() {
+        var state: UInt64 = 0x5eed
+        func next(_ bound: Int) -> Int {
+            state = state &* 6364136223846793005 &+ 1442695040888963407
+            return Int((state >> 33) % UInt64(bound))
+        }
+        for _ in 0..<500 {
+            let count = 1 + next(30)  // 30 × 15 = 450: always fits
+            assertFillsDayAndMonotone((0..<count).map { _ in 1 + next(500) })
+        }
+    }
+
+    @Test func hugeEstimateDoesNotCrash() {
+        let slots = Scheduler.schedule([item(Int.max), item(Int.max), item(1)], hours: hours)
+        #expect(slots.reduce(0) { $0 + $1.end.minutes - $1.start.minutes } == 450)
+    }
+
     @Test func zeroHintIsNotDropped() {
         let zero = item(1, hint: 0)
         let slots = Scheduler.schedule([zero, item(1)], hours: hours)
