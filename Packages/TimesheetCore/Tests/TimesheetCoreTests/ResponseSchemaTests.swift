@@ -65,6 +65,21 @@ struct ResponseSchemaTests {
         #expect(activity == ["type": "string"])
     }
 
+    @Test func itemPropertiesFollowPromptOrder() throws {
+        let raw = ResponseSchema.json(keys: ["e1", "e2"], activityTypes: ["Development"], classifications: ["Billable"])
+        let start = try #require(raw.range(of: #""prefixItems""#)).upperBound
+        let end = try #require(raw.range(of: #""const":"e2""#)).lowerBound
+        let firstItem = raw[start ..< end]
+        let names = ["key", "minutes", "fixedStart", "fixedEnd", "description",
+                     "ticket", "activityType", "classification"]
+        let offsets = try names.map { name in
+            try #require(firstItem.range(of: "\"\(name)\"")).lowerBound
+        }
+
+        #expect(offsets == offsets.sorted())
+        #expect(Set(offsets).count == names.count)
+    }
+
     @Test func nullableFieldsAllowNull() throws {
         let root = try schema()
         let properties = try itemProperties(root, at: 0)
@@ -74,8 +89,7 @@ struct ResponseSchemaTests {
 
         let prefix = try #require(try itemsSchema(root)["prefixItems"] as? [[String: Any]])
         let required = try #require(prefix[0]["required"] as? [String])
-        #expect(Set(required) == ["key", "minutes", "fixedStart", "fixedEnd", "description",
-                                  "ticket", "activityType", "classification"])
-        #expect(required.count == 8)
+        #expect(required == ["key", "minutes", "fixedStart", "fixedEnd", "description",
+                             "ticket", "activityType", "classification"])
     }
 }

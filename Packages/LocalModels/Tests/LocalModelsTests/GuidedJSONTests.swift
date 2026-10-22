@@ -33,10 +33,10 @@ struct GuidedJSONTests {
         return mask.isTerminated || allows(mask, Self.eos)
     }
 
-    // Properties appear in the schema's sorted key order, which the grammar enforces.
+    // Properties appear in the schema's prompt order, which the grammar enforces.
     private func item(_ key: String, activityType: String = "Development", ticket: String = "null") -> String {
-        #"{"activityType":"\#(activityType)","classification":"Billable","description":"Work","#
-            + #""fixedEnd":null,"fixedStart":null,"key":"\#(key)","minutes":30,"ticket":\#(ticket)}"#
+        #"{"key":"\#(key)","minutes":30,"fixedStart":null,"fixedEnd":null,"description":"Work","#
+            + #""ticket":\#(ticket),"activityType":"\#(activityType)","classification":"Billable"}"#
     }
 
     private func reply(_ items: [String]) -> String {
@@ -66,7 +66,10 @@ struct GuidedJSONTests {
     @Test func guidedErrorsMapToIncompleteResponse() {
         #expect(GuidedJSON.mapError(GuidedGenerationError.incompleteOutput) as? LLMError == .incompleteResponse)
         #expect(GuidedJSON.mapError(GuidedGenerationError.prematureEOS) as? LLMError == .incompleteResponse)
+        #expect(GuidedJSON.mapError(GrammarError.commitFailed("token=7")) as? LLMError == .incompleteResponse)
+        #expect(GuidedJSON.mapError(GrammarError.maskComputationFailed("x")) as? LLMError == .incompleteResponse)
         #expect(GuidedJSON.mapError(CancellationError()) is CancellationError)
+        #expect(GuidedJSON.mapError(LLMError.timeout) as? LLMError == .timeout)
     }
 
     @Test func setupFailureFallsBack() throws {

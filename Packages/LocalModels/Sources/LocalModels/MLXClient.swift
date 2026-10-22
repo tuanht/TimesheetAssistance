@@ -88,6 +88,8 @@ public actor MLXClient: LLMClient {
                     return !Task.isCancelled
                 }
             } catch {
+                // A cancel that lands at the token limit surfaces as `incompleteOutput`; it's still a cancel.
+                if Task.isCancelled { throw CancellationError() }
                 throw GuidedJSON.mapError(error)
             }
             return (tokenizer, output)

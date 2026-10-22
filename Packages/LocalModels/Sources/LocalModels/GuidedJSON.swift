@@ -12,8 +12,9 @@ enum GuidedJSON {
             vocab: vocab.vocab, vocabType: vocab.vocabType, eosTokenId: Int32(tokenizer.eosTokenId ?? 0))
     }
 
-    /// A reply the grammar never finished is cut off; the user gets `LLMError.incompleteResponse`.
+    /// A reply the grammar never finished, or one it stopped mid-way, is cut off; the user gets
+    /// `LLMError.incompleteResponse` instead of XGrammar's technical text.
     static func mapError(_ error: Error) -> Error {
-        error is GuidedGenerationError ? LLMError.incompleteResponse : error
+        error is GuidedGenerationError || error is GrammarError ? LLMError.incompleteResponse : error
     }
 }
