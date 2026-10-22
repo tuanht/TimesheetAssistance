@@ -5,19 +5,31 @@ import TimesheetCore
 @main
 struct TimesheetAssistantApp: App {
     private let storeLoad: StoreLoad = StoreLoad.open()
+    /// One settings store for every window, so edits in Settings show up live elsewhere.
+    @StateObject private var settings = SettingsSession.open()
 
     var body: some Scene {
         WindowGroup {
-            switch storeLoad {
-            case .ready(let container):
-                RootView().modelContainer(container)
-            case .failed(let message, let path):
-                StoreErrorView(message: message, path: path)
+            Group {
+                switch storeLoad {
+                case .ready(let container):
+                    RootView().modelContainer(container)
+                case .failed(let message, let path):
+                    StoreErrorView(message: message, path: path)
+                }
             }
+            .environmentObject(settings.store)
+            .environmentObject(settings)
         }
         .commands {
             // ⌘N belongs to "New Entry" in the daily log, not to a second window.
             CommandGroup(replacing: .newItem) {}
+        }
+
+        Settings {
+            SettingsView()
+                .environmentObject(settings.store)
+                .environmentObject(settings)
         }
     }
 }
