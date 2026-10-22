@@ -23,7 +23,7 @@ public enum LineRenderer {
         case .start: clean(time(line.start, template.timeFormat), template)
         case .end: clean(time(line.end, template.timeFormat), template)
         case .description:
-            clean(truncated(collapse(line.description), template.maxDescriptionLength), template)
+            clean(line.description, template)
         case .ticket:
             clean(line.ticket.flatMap { $0.isEmpty ? nil : $0 } ?? template.emptyTicketPlaceholder, template)
         case .activityType: clean(line.activityType, template)
@@ -33,19 +33,17 @@ public enum LineRenderer {
 
     private static func clean(_ s: String, _ template: TemplateSettings) -> String {
         let one = collapse(s)
-        // Match the separator without its padding so "API | DB" becomes "API / DB", not "API/DB".
-        let token = template.separator.trimmingCharacters(in: .whitespaces)
-        guard !token.isEmpty else { return one }
-        return one.replacingOccurrences(of: token, with: template.separatorSubstitute)
+        let sep = template.separator
+        let core = sep.trimmingCharacters(in: .whitespaces)
+        guard !core.isEmpty else { return one }
+        // Only the exact separator is replaced; its padding is kept so "API | DB" becomes "API / DB".
+        let leading = sep.prefix { $0 == " " || $0 == "\t" }
+        let trailing = String(sep.reversed().prefix { $0 == " " || $0 == "\t" }.reversed())
+        return one.replacingOccurrences(of: sep, with: leading + template.separatorSubstitute + trailing)
     }
 
     private static func collapse(_ s: String) -> String {
         s.split(whereSeparator: \.isWhitespace).joined(separator: " ")
-    }
-
-    private static func truncated(_ s: String, _ max: Int?) -> String {
-        guard let max, max >= 0, s.count > max else { return s }
-        return String(s.prefix(max))
     }
 
     private static func time(_ t: ClockTime, _ format: String) -> String {

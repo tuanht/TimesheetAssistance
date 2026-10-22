@@ -58,10 +58,25 @@ struct LineRendererTests {
         #expect(rows[1].contains("late"))
     }
 
-    @Test func maxDescriptionLengthTruncates() {
+    @Test func overLengthDescriptionIsNotTruncated() {
         var t = TemplateSettings.default
         t.maxDescriptionLength = 5
         t.fields = [.description]
-        #expect(LineRenderer.render([line(desc: "abcdefgh")], day: day, template: t) == "abcde")
+        #expect(LineRenderer.render([line(desc: "abcdefgh")], day: day, template: t) == "abcdefgh")
+    }
+
+    @Test func commaSeparatorLeavesNumbersAlone() {
+        var t = TemplateSettings.default
+        t.fields = [.description]
+        t.separator = ", "
+        #expect(LineRenderer.render([line(desc: "1,000")], day: day, template: t) == "1,000")
+        #expect(LineRenderer.render([line(desc: "a, b")], day: day, template: t) == "a/ b")
+    }
+
+    @Test func dashSeparatorLeavesHyphenatedWordsAlone() {
+        var t = TemplateSettings.default
+        t.fields = [.description]
+        t.separator = " - "
+        #expect(LineRenderer.render([line(desc: "well-known")], day: day, template: t) == "well-known")
     }
 }
