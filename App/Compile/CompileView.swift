@@ -184,9 +184,27 @@ private struct CompileBar: View {
 private struct LinesTable: View {
     @ObservedObject var model: CompileViewModel
     @EnvironmentObject private var settings: SettingsStore
+    @State private var selection = Set<TimesheetLine.ID>()
 
     var body: some View {
-        Table(model.lines) {
+        table
+            .contextMenu(forSelectionType: TimesheetLine.ID.self) { ids in
+                if !ids.isEmpty {
+                    Button(ids.count == 1 ? "Delete line" : "Delete \(ids.count) lines", role: .destructive) {
+                        delete(ids)
+                    }
+                }
+            }
+            .onDeleteCommand { delete(selection) }
+    }
+
+    private func delete(_ ids: Set<TimesheetLine.ID>) {
+        selection.subtract(ids)
+        model.delete(ids)
+    }
+
+    private var table: some View {
+        Table(model.lines, selection: $selection) {
             TableColumn("") { line in
                 let messages = IssueMessages.rowMessages(
                     for: line.id, issues: model.issues, lines: model.lines, settings: settings.settings)

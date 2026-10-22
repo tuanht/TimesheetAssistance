@@ -128,6 +128,14 @@ final class CompileViewModel: ObservableObject {
         save(compiledAt: nil)
     }
 
+    /// Removes lines, re-validates and saves. Compiling again brings them back.
+    func delete(_ ids: Set<TimesheetLine.ID>) {
+        guard lines.contains(where: { ids.contains($0.id) }) else { return }
+        lines.removeAll { ids.contains($0.id) }
+        revalidate()
+        save(compiledAt: nil)
+    }
+
     func copyToPasteboard() {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
