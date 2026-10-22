@@ -17,6 +17,9 @@ struct SettingsView: View {
             WorkingHoursTab()
                 .tabItem { Label("Working hours", systemImage: "clock") }
                 .tag("workingHours")
+            ModelsTab()
+                .tabItem { Label("Models", systemImage: "cpu") }
+                .tag("models")
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             VStack(alignment: .leading, spacing: 4) {

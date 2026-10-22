@@ -122,3 +122,57 @@ private extension Result {
         if case .failure = self { true } else { false }
     }
 }
+
+struct EndpointValidationTests {
+    private func urlError(_ text: String) -> String? {
+        if case .failure(let m) = SettingsValidation.endpointURL(text) { return m.text }
+        return nil
+    }
+
+    @Test func acceptsHttpLocalAndHttpsRemote() throws {
+        #expect(try SettingsValidation.endpointURL("http://localhost:11434").get().absoluteString == "http://localhost:11434")
+        #expect(try SettingsValidation.endpointURL("  https://api.example.com/v1 ").get().host() == "api.example.com")
+        #expect(urlError("http://192.168.1.5:1234/v1") == nil)
+    }
+
+    @Test func rejectsBlankBadSchemeAndMissingHost() {
+        #expect(urlError("") == "Enter a base URL.")
+        #expect(urlError("   ") == "Enter a base URL.")
+        #expect(urlError("ftp://localhost") == "Use a URL starting with http:// or https://.")
+        #expect(urlError("localhost:1234") == "Use a URL starting with http:// or https://.")
+        #expect(urlError("http://") == "The URL needs a host.")
+        #expect(urlError("https:///v1") == "The URL needs a host.")
+    }
+
+    @Test func rejectsRemotePlainHttp() {
+        #expect(urlError("http://api.example.com") == "Remote endpoints must use https.")
+        #expect(urlError("HTTP://8.8.8.8") == "Remote endpoints must use https.")
+    }
+
+    @Test func modelNameMustNotBeBlank() {
+        #expect(SettingsValidation.endpointModelError("") == "Enter a model name.")
+        #expect(SettingsValidation.endpointModelError("  ") == "Enter a model name.")
+        #expect(SettingsValidation.endpointModelError("qwen3:8b") == nil)
+    }
+
+    @Test func localNeverNeedsConfirmation() {
+        let url = URL(string: "http://localhost:11434")!
+        #expect(!SettingsValidation.needsRemoteConfirmation(url, saved: .none))
+    }
+
+    @Test func remoteNeedsConfirmationUnlessSameHostAlreadyConfirmed() {
+        let url = URL(string: "https://api.example.com/v1")!
+        let confirmed = ModelSelection.endpoint(EndpointConfig(
+            baseURL: URL(string: "https://API.example.com")!, model: "m", remoteConfirmed: true))
+        let unconfirmed = ModelSelection.endpoint(EndpointConfig(
+            baseURL: URL(string: "https://api.example.com")!, model: "m", remoteConfirmed: false))
+        let otherHost = ModelSelection.endpoint(EndpointConfig(
+            baseURL: URL(string: "https://other.example.com")!, model: "m", remoteConfirmed: true))
+
+        #expect(SettingsValidation.needsRemoteConfirmation(url, saved: .none))
+        #expect(SettingsValidation.needsRemoteConfirmation(url, saved: .local(repoId: "x")))
+        #expect(SettingsValidation.needsRemoteConfirmation(url, saved: unconfirmed))
+        #expect(SettingsValidation.needsRemoteConfirmation(url, saved: otherHost))
+        #expect(!SettingsValidation.needsRemoteConfirmation(url, saved: confirmed))
+    }
+}

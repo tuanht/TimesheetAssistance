@@ -102,6 +102,36 @@ public enum SettingsValidation {
         return nil
     }
 
+    // MARK: Endpoint
+
+    /// Parses the endpoint base URL. Remote endpoints must use https: App Transport Security
+    /// blocks plain http to anything but local hosts.
+    public static func endpointURL(_ text: String) -> Result<URL, ValidationMessage> {
+        let text = trimmed(text)
+        if text.isEmpty { return .failure(ValidationMessage("Enter a base URL.")) }
+        guard let url = URL(string: text), let scheme = url.scheme?.lowercased(), ["http", "https"].contains(scheme)
+        else { return .failure(ValidationMessage("Use a URL starting with http:// or https://.")) }
+        guard let host = url.host(percentEncoded: false), !host.isEmpty else {
+            return .failure(ValidationMessage("The URL needs a host."))
+        }
+        if scheme == "http", !EndpointPolicy.isLocal(url) {
+            return .failure(ValidationMessage("Remote endpoints must use https."))
+        }
+        return .success(url)
+    }
+
+    public static func endpointModelError(_ model: String) -> String? {
+        isBlank(model) ? "Enter a model name." : nil
+    }
+
+    /// A remote URL needs the user's confirmation unless the saved endpoint already has a
+    /// confirmed URL on the same host.
+    public static func needsRemoteConfirmation(_ url: URL, saved: ModelSelection) -> Bool {
+        if EndpointPolicy.isLocal(url) { return false }
+        guard case .endpoint(let config) = saved, config.remoteConfirmed else { return true }
+        return config.baseURL.host(percentEncoded: false)?.lowercased() != url.host(percentEncoded: false)?.lowercased()
+    }
+
     // MARK: Helpers
 
     private static func isBlank(_ s: String) -> Bool {
