@@ -7,11 +7,17 @@ public struct ClockTime: Codable, Hashable, Comparable, Sendable {
         minutes = h * 60 + m
     }
 
+    /// A time the user types: 00:00–23:59.
     public init?(_ hhmm: String) {
+        self.init(hhmm, hourLimit: 24)
+    }
+
+    /// Stored times may run past midnight (an overbooked day's overflow), so decoding accepts 00:00–47:59.
+    private init?(_ hhmm: String, hourLimit: Int) {
         let parts = hhmm.split(separator: ":", omittingEmptySubsequences: false)
         guard parts.count == 2,
               let h = Int(parts[0]), let m = Int(parts[1]),
-              (0..<24).contains(h), (0..<60).contains(m)
+              (0..<hourLimit).contains(h), (0..<60).contains(m)
         else { return nil }
         self.init(h, m)
     }
@@ -33,7 +39,7 @@ public struct ClockTime: Codable, Hashable, Comparable, Sendable {
 
     public init(from decoder: Decoder) throws {
         let s = try decoder.singleValueContainer().decode(String.self)
-        guard let t = ClockTime(s) else {
+        guard let t = ClockTime(s, hourLimit: 48) else {
             throw DecodingError.dataCorrupted(.init(
                 codingPath: decoder.codingPath, debugDescription: "Invalid HH:mm: \(s)"))
         }

@@ -28,6 +28,18 @@ struct ClockTimeTests {
         #expect(try JSONDecoder().decode([ClockTime].self, from: data) == [ClockTime(9, 5)])
     }
 
+    @Test func decodesTimesPastMidnightUpTo4759() throws {
+        let data = Data(#"["24:30","47:59"]"#.utf8)
+        #expect(try JSONDecoder().decode([ClockTime].self, from: data) == [ClockTime(24, 30), ClockTime(47, 59)])
+        #expect(throws: DecodingError.self) { try JSONDecoder().decode([ClockTime].self, from: Data(#"["48:00"]"#.utf8)) }
+        #expect(throws: DecodingError.self) { try JSONDecoder().decode([ClockTime].self, from: Data(#"["24:60"]"#.utf8)) }
+    }
+
+    @Test func encodesTimesPastMidnightLiterally() throws {
+        let data = try JSONEncoder().encode([ClockTime(24, 30)])
+        #expect(String(data: data, encoding: .utf8) == "[\"24:30\"]")
+    }
+
     @Test func comparable() {
         #expect(ClockTime(9, 0) < ClockTime(9, 1))
     }

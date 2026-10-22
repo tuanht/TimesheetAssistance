@@ -46,7 +46,9 @@ public enum LineRenderer {
         s.split(whereSeparator: \.isWhitespace).joined(separator: " ")
     }
 
+    /// Times past midnight (an overbooked day) print literally as "24:30"; a clock format would wrap them.
     private static func time(_ t: ClockTime, _ format: String) -> String {
+        guard t.minutes < 24 * 60 else { return t.hhmm }
         var c = DateComponents()
         c.year = 2000; c.month = 1; c.day = 1
         c.hour = t.minutes / 60; c.minute = t.minutes % 60

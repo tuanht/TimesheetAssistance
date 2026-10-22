@@ -61,6 +61,39 @@ struct PersistenceTests {
         #expect(compiled.lines == [])
     }
 
+    @Test func overbookedDaySurvivesSaveAndReload() throws {
+        let dir = try tempDirectory()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let url = dir.appendingPathComponent("store.sqlite")
+        var late = line("late")
+        late.start = ClockTime(23, 30)
+        late.end = ClockTime(24, 30)
+        var later = line("later")
+        later.start = ClockTime(24, 30)
+        later.end = ClockTime(26, 0)
+        let lines = [line("early"), late, later]
+        do {
+            let context = ModelContext(try Store.container(url: url))
+            context.insert(CompiledDay(day: date(2026, 10, 22), lines: lines, compiledAt: date(2026, 10, 22, 18)))
+            try context.save()
+        }
+        let reopened = ModelContext(try Store.container(url: url))
+        let fetched = try #require(try Store.compiled(on: date(2026, 10, 22), in: reopened))
+        #expect(fetched.lines == lines)
+    }
+
+    @Test func corruptLineDropsOnlyThatLine() throws {
+        let good = line("good")
+        let compiled = CompiledDay(day: date(2026, 10, 22), lines: [good], compiledAt: date(2026, 10, 22))
+        var array = try #require(try JSONSerialization.jsonObject(with: compiled.linesData) as? [[String: Any]])
+        var bad = array[0]
+        bad["start"] = "99:99"
+        array.insert(bad, at: 0)
+        array.append(["description": "missing fields"])
+        compiled.linesData = try JSONSerialization.data(withJSONObject: array)
+        #expect(compiled.lines == [good])
+    }
+
     @Test func compiledDayUniquePerDay() throws {
         let context = ModelContext(try Store.inMemory())
         context.insert(CompiledDay(day: date(2026, 10, 22, 9), lines: [line("old")], compiledAt: date(2026, 10, 22, 17)))

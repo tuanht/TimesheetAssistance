@@ -15,14 +15,27 @@ public final class CompiledDay {
         self.compiledAt = compiledAt
     }
 
+    /// Decoded line by line: a line that can't be read is dropped and the rest are kept.
     /// A corrupt blob reads as no lines instead of crashing the app.
     public var lines: [TimesheetLine] {
-        get { (try? JSONDecoder().decode([TimesheetLine].self, from: linesData)) ?? [] }
+        get {
+            guard let items = try? JSONDecoder().decode([LossyLine].self, from: linesData) else { return [] }
+            return items.compactMap(\.line)
+        }
         set { linesData = Self.encode(newValue) }
     }
 
     private static func encode(_ lines: [TimesheetLine]) -> Data {
         // Encoding plain Codable values cannot fail.
         (try? JSONEncoder().encode(lines)) ?? Data("[]".utf8)
+    }
+}
+
+/// One array element that decodes to `nil` instead of failing the whole array.
+private struct LossyLine: Decodable {
+    let line: TimesheetLine?
+
+    init(from decoder: Decoder) throws {
+        line = try? TimesheetLine(from: decoder)
     }
 }

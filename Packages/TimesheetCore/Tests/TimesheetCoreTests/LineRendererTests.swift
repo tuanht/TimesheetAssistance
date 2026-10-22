@@ -22,6 +22,15 @@ struct LineRendererTests {
         #expect(out == "2026-10-22 | 09:00 | 10:30 | Implement pagination | RSF-1234 | Development | Billable")
     }
 
+    @Test func timesPastMidnightPrintLiterally() {
+        let out = LineRenderer.render([line(ClockTime(23, 45), ClockTime(25, 30))], day: day, template: .default)
+        #expect(out.components(separatedBy: " | ")[1...2] == ["23:45", "25:30"])
+        var custom = TemplateSettings.default
+        custom.timeFormat = "h:mm a"
+        let customOut = LineRenderer.render([line(ClockTime(24, 0), ClockTime(24, 30))], day: day, template: custom)
+        #expect(customOut.components(separatedBy: " | ")[1...2] == ["24:00", "24:30"])
+    }
+
     @Test func emptyTicketUsesPlaceholder() {
         let out = LineRenderer.render([line(ticket: nil)], day: day, template: .default)
         #expect(out.components(separatedBy: " | ")[4] == "—")
