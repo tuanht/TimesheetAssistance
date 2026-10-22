@@ -27,7 +27,7 @@ public struct Compiler: Sendable {
         guard !entries.isEmpty else { throw CompileError.noEntries }
 
         let prompt = PromptBuilder.build(entries: entries, day: day, settings: settings)
-        let text = try await client.complete(system: prompt.system, user: prompt.user)
+        let text = try await client.complete(system: prompt.system, user: prompt.user, jsonSchema: prompt.jsonSchema)
         let modelItems = try ResponseParser.parse(text)
 
         var itemsById: [UUID: ModelItem] = [:]

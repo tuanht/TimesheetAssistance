@@ -2,6 +2,14 @@ import Foundation
 
 public protocol LLMClient: Sendable {
     func complete(system: String, user: String) async throws -> String
+    /// Clients that can constrain decoding force the reply to match `jsonSchema`; the others ignore it.
+    func complete(system: String, user: String, jsonSchema: String?) async throws -> String
+}
+
+extension LLMClient {
+    public func complete(system: String, user: String, jsonSchema: String?) async throws -> String {
+        try await complete(system: system, user: user)
+    }
 }
 
 public enum LLMError: Error, Equatable, Sendable {
@@ -16,6 +24,8 @@ public enum LLMError: Error, Equatable, Sendable {
     case modelLoadFailed
     /// The server answered with a redirect; redirects are refused so notes never reach an unvetted host.
     case redirectRefused
+    /// The model stopped before its reply was complete (for example, it hit the token limit).
+    case incompleteResponse
 
     public var userMessage: String {
         switch self {
@@ -38,6 +48,8 @@ public enum LLMError: Error, Equatable, Sendable {
             return "Couldn't load the model. Delete it in Settings › Models and download it again."
         case .redirectRefused:
             return "The endpoint tried to redirect to another address. Use the final URL directly."
+        case .incompleteResponse:
+            return "The model's answer was cut off before it finished. Try again."
         }
     }
 }
