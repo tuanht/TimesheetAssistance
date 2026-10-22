@@ -3,13 +3,14 @@ import SwiftUI
 import TimesheetCore
 
 struct RootView: View {
-    private enum Section: String, CaseIterable, Identifiable {
-        case dailyLog = "Daily log"
+    /// The window's tabs. Also read by the ⌘1/⌘2 menu commands through the same "mainTab" key.
+    enum Section: String, CaseIterable, Identifiable {
+        case log = "Log"
         case compile = "Compile"
         var id: String { rawValue }
     }
 
-    @State private var selection: Section? = .dailyLog
+    @AppStorage("mainTab") private var selection: Section = .log
     /// Shared by the daily log and Compile so both work on the same day.
     @State private var anchor = Date()
     /// Which period the daily log shows around `anchor`.
@@ -23,19 +24,23 @@ struct RootView: View {
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
-        NavigationSplitView {
-            List(Section.allCases, selection: $selection) { section in
-                Text(section.rawValue).tag(section)
-            }
-            .navigationSplitViewColumnWidth(min: 160, ideal: 180)
-        } detail: {
+        Group {
             switch selection {
-            case .dailyLog:
+            case .log:
                 DailyLogView(anchor: $anchor, kind: $logPeriod)
             case .compile:
                 CompileView(anchor: $anchor, kind: $compileRange, customStart: $customStart, customEnd: $customEnd)
-            case nil:
-                EmptyView()
+            }
+        }
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                Picker("Section", selection: $selection) {
+                    ForEach(Section.allCases) { section in
+                        Text(section.rawValue).tag(section)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
             }
         }
         .frame(minWidth: 720, minHeight: 440)

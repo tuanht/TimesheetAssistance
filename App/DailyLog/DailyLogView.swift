@@ -18,7 +18,7 @@ struct DailyLogView: View {
             EntryList(anchor: anchor, kind: kind, range: range)
                 .id(range.keys().joined(separator: ",") + kind.rawValue)
         }
-        .navigationTitle("Daily log")
+        .navigationTitle("Log")
     }
 }
 
