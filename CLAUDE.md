@@ -33,16 +33,7 @@ swift scripts/render-icon.swift
 
 ## Architecture
 
-- **`Packages/TimesheetCore`** holds all logic, with no UI. Each folder has one job:
-  - `Settings/`: the `AppSettings` model, `SettingsStore` (JSON), `SettingsValidation`, `AppPaths`, `ClockTime`
-  - `Output/`: `TimesheetLine`, `LineRenderer` (plain-text output)
-  - `Schedule/`: `DurationHint`, `Scheduler`
-  - `Validate/`: `LineValidator`
-  - `Compile/`: `EntrySnapshot`, `PromptBuilder`, `ResponseParser`, `Compiler`
-  - `LLM/`: `LLMClient`, `OpenAICompatibleClient`, `EndpointPolicy`, `KeychainStore`
-  - `Catalog/`: `ModelCatalog`, `RAMTier`
-  - `Persistence/`: SwiftData `LogEntry` and `CompiledDay`, `Store`, `DayKey`
-  - `Review/`: pure helpers for the Compile screen (`ClientPlan`, `IssueMessages`, `TotalText`, and others)
+- **`Packages/TimesheetCore`** holds all logic, with no UI. One folder per job (`Settings/`, `Output/`, `Schedule/`, `Validate/`, `Compile/`, `LLM/`, `Catalog/`, `Persistence/`, `Review/`, `Period/`).
 - **`Packages/LocalModels`** wraps `mlx-swift-lm` (pinned to exact 3.32.3):
   - `MLXModelManager` handles download, delete and `isDownloaded`, and keeps at most one model loaded.
   - `MLXClient` conforms to `LLMClient`.
