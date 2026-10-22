@@ -145,6 +145,8 @@ So each service offers two methods in Settings › Integrations, and the user pi
 - "Couldn't find ABC-123 in Jira." (not found or no access)
 - "Couldn't reach Jira. Check your connection and try again."
 - "Sign in to GitHub again in Settings › Integrations."
+- "Your organization hasn't approved this app for GitHub. Ask an admin, or switch sign-in method in Settings › Integrations." (changed from "…or use a personal token instead", which was wrong for personal-token users)
+- Settings › Test of a Jira personal token that is refused: "Jira refused this email and token. Check them, and that your admin allows API-token access."
 - "Set up a model first. …" (existing `ClientPlan` text)
 
 ### Privacy rule (replaces the spec's Privacy section)
