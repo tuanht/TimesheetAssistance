@@ -22,8 +22,10 @@ struct SettingsValidationTests {
         #expect(SettingsValidation.separatorSubstituteError(" | ", separator: " | ") != nil)
         #expect(SettingsValidation.separatorSubstituteError("a;b", separator: ";") != nil)
         #expect(SettingsValidation.separatorSubstituteError(" / ", separator: "\t") == nil)
-        // Only the exact separator string counts: "|" does not contain " | ".
-        #expect(SettingsValidation.separatorSubstituteError("|", separator: " | ") == nil)
+        // The renderer keeps the separator's padding around the substitute, so its core must not appear either.
+        #expect(SettingsValidation.separatorSubstituteError("|", separator: " | ") != nil)
+        #expect(SettingsValidation.separatorSubstituteError("/", separator: " | ") == nil)
+        #expect(SettingsValidation.separatorSubstituteError("/", separator: "\t") == nil)
     }
 
     @Test func formatRejectsBlank() {

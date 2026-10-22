@@ -20,10 +20,13 @@ public enum SettingsValidation {
         separator.isEmpty ? "The separator can't be empty." : nil
     }
 
-    /// A substitute that is empty or contains the separator would let the separator leak into field values.
+    /// Rejects a substitute that is empty, contains the separator, or contains the separator's
+    /// non-empty core (trimmed of spaces and tabs). The renderer keeps the separator's padding
+    /// around the substitute, so " | " with substitute "|" would still emit " | ".
     public static func separatorSubstituteError(_ substitute: String, separator: String) -> String? {
         if substitute.isEmpty { return "The separator substitute can't be empty." }
-        if !separator.isEmpty, substitute.contains(separator) {
+        let core = separator.trimmingCharacters(in: .whitespaces)
+        if (!separator.isEmpty && substitute.contains(separator)) || (!core.isEmpty && substitute.contains(core)) {
             return "The separator substitute can't contain the separator."
         }
         return nil
