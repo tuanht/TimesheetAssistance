@@ -27,6 +27,7 @@ struct IntegrationsTab: View {
             }
         }
         .formStyle(.grouped)
+        .scrollsOnlyWhenOverflowing()
     }
 
     private static func trimmed(_ value: String) -> String {

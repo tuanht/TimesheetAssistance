@@ -70,6 +70,7 @@ struct TemplateTab: View {
             }
         }
         .formStyle(.grouped)
+        .scrollsOnlyWhenOverflowing()
     }
 
     private var limitBinding: Binding<Bool> {

@@ -55,6 +55,7 @@ private struct EditableList: View {
                 }
             }
             .frame(minHeight: 260)
+            .scrollsOnlyWhenOverflowing()
             HStack {
                 Button { move(by: -1) } label: { Image(systemName: "chevron.up") }
                     .disabled(!canMove(by: -1))

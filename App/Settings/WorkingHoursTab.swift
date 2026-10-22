@@ -44,6 +44,7 @@ struct WorkingHoursTab: View {
             }
         }
         .formStyle(.grouped)
+        .scrollsOnlyWhenOverflowing()
         .onAppear {
             guard !loaded else { return }
             loaded = true
