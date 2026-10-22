@@ -20,7 +20,8 @@ struct DailyLogView: View {
     }
 }
 
-private struct DayBar: View {
+/// Day picker shared by the daily log and Compile.
+struct DayBar: View {
     @Binding var day: Date
 
     var body: some View {

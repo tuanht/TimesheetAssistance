@@ -23,6 +23,7 @@ struct TimesheetAssistantApp: App {
             }
             .environmentObject(settings.store)
             .environmentObject(settings)
+            .environmentObject(models)
         }
         .commands {
             // ⌘N belongs to "New Entry" in the daily log, not to a second window.

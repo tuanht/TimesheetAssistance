@@ -21,9 +21,10 @@ struct RootView: View {
             switch selection {
             case .dailyLog:
                 DailyLogView(day: $day)
-            case .compile, nil:
-                Text(selection?.rawValue ?? "")
-                    .foregroundStyle(.secondary)
+            case .compile:
+                CompileView(day: $day)
+            case nil:
+                EmptyView()
             }
         }
         .frame(minWidth: 720, minHeight: 440)

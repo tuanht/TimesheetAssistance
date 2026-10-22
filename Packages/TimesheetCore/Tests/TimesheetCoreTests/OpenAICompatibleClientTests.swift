@@ -167,6 +167,11 @@ struct OpenAICompatibleClientTests {
         }
     }
 
+    @Test func modelNotReadyMessageFitsLocalAndEndpoint() {
+        #expect(LLMError.modelNotReady.userMessage
+            == "The model isn't ready. Download it in Settings › Models, or load it on your server, then try again.")
+    }
+
     @Test func connectionRefusedThrowsUnreachable() async throws {
         let sut = client(.failure(URLError(.cannotConnectToHost)))
         do {

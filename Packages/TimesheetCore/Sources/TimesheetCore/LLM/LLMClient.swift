@@ -31,7 +31,7 @@ public enum LLMError: Error, Equatable, Sendable {
         case .emptyResponse:
             return "The model returned an empty response. Try again."
         case .modelNotReady:
-            return "The model isn't loaded on the endpoint yet. Load it in your server, then try again."
+            return "The model isn't ready. Download it in Settings › Models, or load it on your server, then try again."
         case .redirectRefused:
             return "The endpoint tried to redirect to another address. Use the final URL directly."
         }
