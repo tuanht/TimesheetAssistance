@@ -135,6 +135,7 @@ final class CompileViewModel: ObservableObject {
                 days[at].issues = result.issues
                 do {
                     try persist(at, compiledAt: Date())
+                    storeError = nil
                 } catch {
                     // Stop here: a later day's save must not hide this one's failure.
                     let date = Period.label(.day, anchor: item.day)
