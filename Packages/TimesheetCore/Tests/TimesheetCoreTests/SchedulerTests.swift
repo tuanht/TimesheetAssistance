@@ -1,0 +1,165 @@
+import Foundation
+import Testing
+@testable import TimesheetCore
+
+struct SchedulerTests {
+    let hours = WorkingHours.default
+
+    func item(_ estimate: Int = 1, hint: Int? = nil, fixed: (ClockTime, ClockTime)? = nil) -> ScheduleItem {
+        ScheduleItem(entryId: UUID(), hintMinutes: hint, estimatedMinutes: estimate,
+                     fixed: fixed.map { (start: $0.0, end: $0.1) })
+    }
+
+    func minutes(of id: UUID, in slots: [ScheduledSlot]) -> Int {
+        slots.filter { $0.entryId == id }.reduce(0) { $0 + $1.end.minutes - $1.start.minutes }
+    }
+
+    @Test func fillsDayExactlyWithNoGaps() {
+        let items = [item(1), item(1), item(2)]
+        let slots = Scheduler.schedule(items, hours: hours)
+
+        let morning = slots.filter { $0.end <= ClockTime(12, 0) }
+        let afternoon = slots.filter { $0.start >= ClockTime(13, 0) }
+        #expect(morning.count + afternoon.count == slots.count)
+        #expect(morning.first?.start == ClockTime(9, 0))
+        #expect(morning.last?.end == ClockTime(12, 0))
+        #expect(afternoon.first?.start == ClockTime(13, 0))
+        #expect(afternoon.last?.end == ClockTime(17, 30))
+        for run in [morning, afternoon] {
+            for (a, b) in zip(run, run.dropFirst()) { #expect(a.end == b.start) }
+        }
+        #expect(slots.reduce(0) { $0 + $1.end.minutes - $1.start.minutes } == 450)
+        for i in items { #expect(minutes(of: i.entryId, in: slots) > 0) }
+    }
+
+    @Test func biggerEstimateGetsMoreTime() {
+        let small = item(1), big = item(2)
+        let slots = Scheduler.schedule([small, big], hours: hours)
+        #expect(minutes(of: big.entryId, in: slots) > minutes(of: small.entryId, in: slots))
+    }
+
+    @Test func hintIsHonouredExactly() {
+        let hinted = item(5, hint: 120), a = item(1), b = item(1)
+        let slots = Scheduler.schedule([a, hinted, b], hours: hours)
+        #expect(minutes(of: hinted.entryId, in: slots) == 120)
+        #expect(minutes(of: a.entryId, in: slots) + minutes(of: b.entryId, in: slots) == 330)
+    }
+
+    @Test func fixedMeetingKeepsSlot() {
+        let meeting = item(fixed: (ClockTime(10, 0), ClockTime(10, 30)))
+        let a = item(1), b = item(1)
+        let slots = Scheduler.schedule([a, meeting, b], hours: hours)
+
+        #expect(slots.filter { $0.entryId == meeting.entryId }
+            == [ScheduledSlot(entryId: meeting.entryId, start: ClockTime(10, 0), end: ClockTime(10, 30))])
+        for s in slots where s.entryId != meeting.entryId {
+            #expect(s.end <= ClockTime(10, 0) || s.start >= ClockTime(10, 30))
+        }
+        #expect(minutes(of: a.entryId, in: slots) + minutes(of: b.entryId, in: slots) == 420)
+    }
+
+    @Test func itemCrossingLunchIsSplit() {
+        let first = item(hint: 150), crossing = item(hint: 60), rest = item(1)
+        let slots = Scheduler.schedule([first, crossing, rest], hours: hours)
+        let parts = slots.filter { $0.entryId == crossing.entryId }
+        #expect(parts == [
+            ScheduledSlot(entryId: crossing.entryId, start: ClockTime(11, 30), end: ClockTime(12, 0)),
+            ScheduledSlot(entryId: crossing.entryId, start: ClockTime(13, 0), end: ClockTime(13, 30)),
+        ])
+    }
+
+    @Test func overbookedHintsSpillPastEnd() {
+        let a = item(hint: 300), b = item(hint: 300), c = item(1)
+        let slots = Scheduler.schedule([a, b, c], hours: hours)
+        #expect(minutes(of: a.entryId, in: slots) == 300)
+        #expect(minutes(of: b.entryId, in: slots) == 300)
+        #expect(minutes(of: c.entryId, in: slots) >= hours.roundingMinutes)
+        #expect(slots.last!.end > ClockTime(17, 30))
+        for (x, y) in zip(slots, slots.dropFirst()) { #expect(x.end <= y.start) }
+    }
+
+    @Test func fixedMeetingInLunchIsKept() {
+        let meeting = item(fixed: (ClockTime(12, 15), ClockTime(12, 45)))
+        let slots = Scheduler.schedule([item(1), meeting], hours: hours)
+        #expect(slots.contains(
+            ScheduledSlot(entryId: meeting.entryId, start: ClockTime(12, 15), end: ClockTime(12, 45))))
+    }
+
+    @Test func allSlotsOnRoundingGrid() {
+        let items = [item(3), item(1), item(fixed: (ClockTime(14, 0), ClockTime(15, 0))), item(2), item(7)]
+        let slots = Scheduler.schedule(items, hours: hours)
+        for s in slots {
+            #expect(s.start.minutes % 15 == 0)
+            #expect(s.end.minutes % 15 == 0)
+        }
+    }
+
+    @Test func outputSortedByStart() {
+        let items = [item(1), item(fixed: (ClockTime(9, 0), ClockTime(9, 30))), item(2)]
+        let slots = Scheduler.schedule(items, hours: hours)
+        #expect(slots.map(\.start) == slots.map(\.start).sorted())
+    }
+
+    @Test func manyEqualItemsFillDayExactly() {
+        let slots = Scheduler.schedule((0..<12).map { _ in item(1) }, hours: hours)
+        #expect(slots.reduce(0) { $0 + $1.end.minutes - $1.start.minutes } == 450)
+        #expect(slots.last?.end == ClockTime(17, 30))
+    }
+
+    @Test func manyItemsAroundMeetingFillDayExactly() {
+        let items = (0..<8).map { _ in item(1) } + [item(fixed: (ClockTime(10, 0), ClockTime(10, 30)))]
+        let slots = Scheduler.schedule(items, hours: hours)
+        #expect(slots.reduce(0) { $0 + $1.end.minutes - $1.start.minutes } == 450)
+        #expect(slots.last?.end == ClockTime(17, 30))
+    }
+
+    @Test func roundingKeepsSizeOrder() {
+        let small = (0..<7).map { _ in item(2) }, big = item(3)
+        let slots = Scheduler.schedule(small + [big], hours: hours)
+        let bigMinutes = minutes(of: big.entryId, in: slots)
+        for s in small { #expect(bigMinutes >= minutes(of: s.entryId, in: slots)) }
+    }
+
+    func assertFillsDayAndMonotone(_ estimates: [Int]) {
+        let items = estimates.map { item($0) }
+        let slots = Scheduler.schedule(items, hours: hours)
+        #expect(slots.reduce(0) { $0 + $1.end.minutes - $1.start.minutes } == 450, "\(estimates)")
+        #expect(slots.last?.end == ClockTime(17, 30), "\(estimates)")
+        let given = items.map { minutes(of: $0.entryId, in: slots) }
+        for i in items.indices { for j in items.indices where estimates[i] > estimates[j] {
+            #expect(given[i] >= given[j], "\(estimates)")
+        } }
+    }
+
+    @Test(arguments: [[480, 5], [400, 5, 5], [84, 18, 18, 237, 32, 234, 141, 172]])
+    func dominantEstimateDoesNotOverbook(estimates: [Int]) {
+        assertFillsDayAndMonotone(estimates)
+    }
+
+    @Test func randomFittingDaysFillExactlyAndKeepSizeOrder() {
+        var state: UInt64 = 0x5eed
+        func next(_ bound: Int) -> Int {
+            state = state &* 6364136223846793005 &+ 1442695040888963407
+            return Int((state >> 33) % UInt64(bound))
+        }
+        for _ in 0..<500 {
+            let count = 1 + next(30)  // 30 × 15 = 450: always fits
+            assertFillsDayAndMonotone((0..<count).map { _ in 1 + next(500) })
+        }
+    }
+
+    @Test func hugeEstimateDoesNotCrash() {
+        let slots = Scheduler.schedule([item(Int.max), item(Int.max), item(1)], hours: hours)
+        #expect(slots.reduce(0) { $0 + $1.end.minutes - $1.start.minutes } == 450)
+    }
+
+    @Test func zeroHintIsNotDropped() {
+        let zero = item(1, hint: 0)
+        let slots = Scheduler.schedule([zero, item(1)], hours: hours)
+        #expect(minutes(of: zero.entryId, in: slots) > 0)
+    }
+
+    @Test func emptyInputGivesNoSlots() {
+        #expect(Scheduler.schedule([], hours: hours).isEmpty)
+    }
+}

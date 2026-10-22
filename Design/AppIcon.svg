@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="100" y1="100" x2="924" y2="924" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0F766E"/>
+      <stop offset="1" stop-color="#4338CA"/>
+    </linearGradient>
+  </defs>
+  <rect x="100" y="100" width="824" height="824" rx="184" ry="184" fill="url(#bg)"/>
+  <!-- note page -->
+  <rect x="260" y="230" width="400" height="500" rx="36" ry="36" fill="#FFFFFF"/>
+  <rect x="320" y="330" width="280" height="38" rx="19" ry="19" fill="#CBD5E1"/>
+  <rect x="320" y="420" width="280" height="38" rx="19" ry="19" fill="#CBD5E1"/>
+  <rect x="320" y="510" width="180" height="38" rx="19" ry="19" fill="#CBD5E1"/>
+  <!-- clock badge -->
+  <circle cx="650" cy="690" r="170" fill="#FFFFFF" stroke="#4338CA" stroke-width="18"/>
+  <!-- hands at 10:10 -->
+  <g stroke="#4338CA" stroke-linecap="round" stroke-width="26" fill="none">
+    <line x1="650" y1="690" x2="571" y2="644"/>
+    <line x1="650" y1="690" x2="729" y2="644"/>
+  </g>
+  <circle cx="650" cy="690" r="18" fill="#4338CA"/>
+</svg>

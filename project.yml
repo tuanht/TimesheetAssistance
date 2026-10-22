@@ -1,0 +1,40 @@
+name: TimesheetAssistant
+options:
+  bundleIdPrefix: com.tuanht
+  deploymentTarget:
+    macOS: "15.0"
+packages:
+  TimesheetCore:
+    path: Packages/TimesheetCore
+  LocalModels:
+    path: Packages/LocalModels
+targets:
+  TimesheetAssistant:
+    type: application
+    platform: macOS
+    sources:
+      - App
+    dependencies:
+      - package: TimesheetCore
+      - package: LocalModels
+    info:
+      path: App/Info.plist
+      properties:
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.tuanht.TimesheetAssistant
+        CODE_SIGN_ENTITLEMENTS: App/TimesheetAssistant.entitlements
+        ENABLE_HARDENED_RUNTIME: YES
+        ENABLE_APP_SANDBOX: NO
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Timesheet Assistant
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.productivity
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        ARCHS: arm64
+        SWIFT_VERSION: "6.0"
