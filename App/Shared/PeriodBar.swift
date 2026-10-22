@@ -25,8 +25,8 @@ struct PeriodBar: View {
                 .disabled(containsToday)
             Spacer()
             Picker("Period", selection: $kind) {
-                ForEach(PeriodKind.allCases, id: \.self) { kind in
-                    Text(kind.displayName).tag(kind)
+                ForEach(PeriodKind.allCases, id: \.self) { option in
+                    Text(option.displayName).tag(option)
                 }
             }
             .pickerStyle(.segmented)
