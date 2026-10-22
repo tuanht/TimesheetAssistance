@@ -8,7 +8,7 @@ struct DailyLogView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            DayBar(day: $day)
+            PeriodBar(anchor: $day, kind: .constant(.day))
                 .padding(.horizontal)
                 .padding(.vertical, 8)
             Divider()
@@ -17,34 +17,6 @@ struct DailyLogView: View {
                 .id(DayKey.string(for: day))
         }
         .navigationTitle("Daily log")
-    }
-}
-
-/// Day picker shared by the daily log and Compile.
-struct DayBar: View {
-    @Binding var day: Date
-
-    var body: some View {
-        HStack {
-            Button { shift(by: -1) } label: { Image(systemName: "chevron.left") }
-                .accessibilityLabel("Previous day")
-                .help("Previous day")
-            DatePicker("Day", selection: $day, displayedComponents: .date)
-                .labelsHidden()
-                .accessibilityLabel("Day")
-            Button { shift(by: 1) } label: { Image(systemName: "chevron.right") }
-                .accessibilityLabel("Next day")
-                .help("Next day")
-            Button("Today") { day = Date() }
-                .disabled(Calendar.current.isDateInToday(day))
-            Spacer()
-        }
-    }
-
-    private func shift(by days: Int) {
-        if let moved = Calendar.current.date(byAdding: .day, value: days, to: day) {
-            day = moved
-        }
     }
 }
 

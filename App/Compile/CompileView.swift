@@ -13,7 +13,7 @@ struct CompileView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            DayBar(day: $day)
+            PeriodBar(anchor: $day, kind: .constant(.day))
                 .padding(.horizontal)
                 .padding(.vertical, 8)
             Divider()
