@@ -84,6 +84,39 @@ struct CompilerTests {
         #expect(result.lines.filter { $0.entryId == entries[1].id }.allSatisfy { $0.ticket == "DEF-2" })
     }
 
+    @Test func ticketDetectedFromTextWhenModelOmitsIt() async throws {
+        let entries = [entry("Reviewed PROJ-42 rollout")]
+        let (result, _) = try await compile(entries, response(item("e1", ticket: nil)))
+        #expect(!result.lines.isEmpty)
+        #expect(result.lines.allSatisfy { $0.ticket == "PROJ-42" })
+    }
+
+    @Test func entryTicketBeatsDetectedAndModel() async throws {
+        let entries = [entry("Follow-up on BB-2", ticketRef: "AA-1")]
+        let (result, _) = try await compile(entries, response(item("e1", ticket: "CC-3")))
+        #expect(!result.lines.isEmpty)
+        #expect(result.lines.allSatisfy { $0.ticket == "AA-1" })
+    }
+
+    @Test func detectedBeatsModel() async throws {
+        let entries = [entry("Follow-up on BB-2")]
+        let (result, _) = try await compile(entries, response(item("e1", ticket: "CC-3")))
+        #expect(!result.lines.isEmpty)
+        #expect(result.lines.allSatisfy { $0.ticket == "BB-2" })
+    }
+
+    @Test func skippedEntryStillGetsDetectedTicket() async throws {
+        let entries = [entry("Work"), entry("Follow-up on BB-2")]
+        let (result, _) = try await compile(entries, response(item("e1")))
+        let skipped = result.lines.filter { $0.entryId == entries[1].id }
+        #expect(!skipped.isEmpty)
+        #expect(skipped.allSatisfy { $0.ticket == "BB-2" })
+    }
+
+    @Test func ticketTypeDisplayName() {
+        #expect(EntryType.ticket.displayName == "Ticket")
+    }
+
     @Test func blankModelTicketIsNil() async throws {
         let entries = [entry("Work")]
         let (result, _) = try await compile(entries, response(item("e1", ticket: "  ")))

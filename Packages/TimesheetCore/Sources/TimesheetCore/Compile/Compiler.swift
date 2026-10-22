@@ -37,7 +37,7 @@ public struct Compiler: Sendable {
         }
 
         let fields = entries.map { entry in
-            LineFields(entry: entry, item: itemsById[entry.id])
+            LineFields(entry: entry, item: itemsById[entry.id], ticketPattern: settings.template.ticketPattern)
         }
         let scheduleItems = zip(entries, fields).map { entry, f in
             ScheduleItem(
@@ -73,15 +73,17 @@ private struct LineFields {
     static let skippedMinutes = 30
     static let skippedDescriptionLength = 80
 
-    init(entry: EntrySnapshot, item: ModelItem?) {
-        let entryTicket = LineFields.nonBlank(entry.ticketRef)
+    init(entry: EntrySnapshot, item: ModelItem?, ticketPattern: String) {
+        // Entry's own ticket first, then a pattern match in its text, then the model's.
+        let knownTicket = LineFields.nonBlank(entry.ticketRef)
+            ?? TicketDetector.firstTicket(in: entry.text, pattern: ticketPattern)
         guard let item else {
             // Model skipped the entry: keep it, with empty fields the validator will flag.
             estimatedMinutes = LineFields.skippedMinutes
             fixed = nil
             description = String(entry.text.trimmingCharacters(in: .whitespacesAndNewlines)
                 .prefix(LineFields.skippedDescriptionLength))
-            ticket = entryTicket
+            ticket = knownTicket
             activityType = ""
             classification = ""
             return
@@ -94,7 +96,7 @@ private struct LineFields {
             fixed = nil
         }
         description = item.description.trimmingCharacters(in: .whitespacesAndNewlines)
-        ticket = entryTicket ?? LineFields.nonBlank(item.ticket)
+        ticket = knownTicket ?? LineFields.nonBlank(item.ticket)
         activityType = item.activityType
         classification = item.classification
     }
