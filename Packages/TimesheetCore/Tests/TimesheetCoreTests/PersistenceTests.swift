@@ -33,14 +33,44 @@ struct PersistenceTests {
         #expect(result.map(\.text) == ["first", "second"])
     }
 
-    @Test func dayNormalisedToStartOfDay() {
+    @Test func dayStoredAsCalendarDateKey() {
         let entry = LogEntry(day: date(2026, 10, 22, 17, 45), type: .pullRequest, ticketRef: nil, durationHint: nil, text: "pr")
-        #expect(entry.day == calendar.startOfDay(for: date(2026, 10, 22)))
+        #expect(entry.dayKey == "2026-10-22")
         #expect(entry.type == .pullRequest)
         #expect(entry.snapshot == EntrySnapshot(id: entry.id, type: .pullRequest, ticketRef: nil, durationHint: nil, text: "pr"))
 
         let compiled = CompiledDay(day: date(2026, 10, 22, 17, 45), lines: [], compiledAt: date(2026, 10, 22, 18))
-        #expect(compiled.day == calendar.startOfDay(for: date(2026, 10, 22)))
+        #expect(compiled.dayKey == "2026-10-22")
+    }
+
+    @Test func dayKeyUsesTheGivenTimeZone() throws {
+        let instant = try #require(ISO8601DateFormatter().date(from: "2026-10-22T23:30:00Z"))
+        #expect(DayKey.string(for: instant, timeZone: try #require(TimeZone(identifier: "UTC"))) == "2026-10-22")
+        #expect(DayKey.string(for: instant, timeZone: try #require(TimeZone(identifier: "Asia/Tokyo"))) == "2026-10-23")
+        #expect(DayKey.string(for: instant, timeZone: try #require(TimeZone(identifier: "America/Los_Angeles"))) == "2026-10-22")
+    }
+
+    @Test func dataWrittenInOneTimeZoneIsFoundInAnother() throws {
+        let berlin = try #require(TimeZone(identifier: "Europe/Berlin"))
+        let newYork = try #require(TimeZone(identifier: "America/New_York"))
+        func instant(_ hour: Int, in zone: TimeZone) throws -> Date {
+            var cal = Calendar(identifier: .gregorian)
+            cal.timeZone = zone
+            return try #require(cal.date(from: DateComponents(year: 2026, month: 10, day: 22, hour: hour)))
+        }
+        let context = ModelContext(try Store.inMemory())
+        context.insert(LogEntry(day: try instant(10, in: berlin), type: .note, ticketRef: nil, durationHint: nil,
+                                text: "berlin", timeZone: berlin))
+        context.insert(CompiledDay(day: try instant(10, in: berlin), lines: [line("berlin")],
+                                   compiledAt: try instant(18, in: berlin), timeZone: berlin))
+        try context.save()
+
+        // 23:00 in New York on the 22nd is already the 23rd in Berlin; the calendar date still matches.
+        let query = try instant(23, in: newYork)
+        #expect(try Store.entries(on: query, in: context, timeZone: newYork).map(\.text) == ["berlin"])
+        #expect(try Store.compiled(on: query, in: context, timeZone: newYork)?.lines.map(\.description) == ["berlin"])
+        #expect(try Store.entries(on: query, in: context, timeZone: berlin).isEmpty)
+        #expect(try Store.compiled(on: query, in: context, timeZone: berlin) == nil)
     }
 
     @Test func compiledDayLinesRoundTrip() throws {

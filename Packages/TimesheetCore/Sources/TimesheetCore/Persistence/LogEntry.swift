@@ -5,17 +5,21 @@ import SwiftData
 @Model
 public final class LogEntry {
     @Attribute(.unique) public var id: UUID
-    /// Always `Calendar.current.startOfDay`, so day queries can match on equality.
-    public var day: Date
+    /// The calendar date it was logged for, from `DayKey`.
+    public var dayKey: String
     public var typeRaw: String
     public var ticketRef: String?
     public var durationHint: String?
     public var text: String
     public var createdAt: Date
 
-    public init(day: Date, type: EntryType, ticketRef: String?, durationHint: String?, text: String) {
+    /// `day` is read as a calendar date in `timeZone`.
+    public init(
+        day: Date, type: EntryType, ticketRef: String?, durationHint: String?, text: String,
+        timeZone: TimeZone = .current
+    ) {
         self.id = UUID()
-        self.day = Calendar.current.startOfDay(for: day)
+        self.dayKey = DayKey.string(for: day, timeZone: timeZone)
         self.typeRaw = type.rawValue
         self.ticketRef = ticketRef
         self.durationHint = durationHint

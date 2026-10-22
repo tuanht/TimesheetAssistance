@@ -15,17 +15,17 @@ public enum Store {
             schema: schema, isStoredInMemoryOnly: true, cloudKitDatabase: .none))
     }
 
-    /// Entries for the calendar day containing `day`, oldest first.
-    public static func entries(on day: Date, in context: ModelContext) throws -> [LogEntry] {
-        let start = Calendar.current.startOfDay(for: day)
+    /// Entries for the calendar date of `day` in `timeZone`, oldest first.
+    public static func entries(on day: Date, in context: ModelContext, timeZone: TimeZone = .current) throws -> [LogEntry] {
+        let key = DayKey.string(for: day, timeZone: timeZone)
         return try context.fetch(FetchDescriptor<LogEntry>(
-            predicate: #Predicate { $0.day == start },
+            predicate: #Predicate { $0.dayKey == key },
             sortBy: [SortDescriptor(\.createdAt)]))
     }
 
-    public static func compiled(on day: Date, in context: ModelContext) throws -> CompiledDay? {
-        let start = Calendar.current.startOfDay(for: day)
-        var descriptor = FetchDescriptor<CompiledDay>(predicate: #Predicate { $0.day == start })
+    public static func compiled(on day: Date, in context: ModelContext, timeZone: TimeZone = .current) throws -> CompiledDay? {
+        let key = DayKey.string(for: day, timeZone: timeZone)
+        var descriptor = FetchDescriptor<CompiledDay>(predicate: #Predicate { $0.dayKey == key })
         descriptor.fetchLimit = 1
         return try context.fetch(descriptor).first
     }

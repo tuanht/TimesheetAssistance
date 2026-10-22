@@ -14,7 +14,7 @@ struct DailyLogView: View {
             Divider()
             // Rebuilt per day so its @Query predicate matches the selected day.
             EntryList(day: day)
-                .id(Calendar.current.startOfDay(for: day))
+                .id(DayKey.string(for: day))
         }
         .navigationTitle("Daily log")
     }
@@ -73,8 +73,8 @@ private struct EntryList: View {
 
     init(day: Date) {
         self.day = day
-        let start = Calendar.current.startOfDay(for: day)
-        _entries = Query(filter: #Predicate<LogEntry> { $0.day == start }, sort: \.createdAt)
+        let key = DayKey.string(for: day)
+        _entries = Query(filter: #Predicate<LogEntry> { $0.dayKey == key }, sort: \.createdAt)
     }
 
     var body: some View {

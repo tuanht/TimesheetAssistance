@@ -4,13 +4,14 @@ import SwiftData
 /// The compiled timesheet lines for one day; at most one record per day.
 @Model
 public final class CompiledDay {
-    /// Always `Calendar.current.startOfDay`; unique, so inserting the same day again replaces it.
-    @Attribute(.unique) public var day: Date
+    /// The calendar date from `DayKey`; unique, so inserting the same day again replaces it.
+    @Attribute(.unique) public var dayKey: String
     public var linesData: Data
     public var compiledAt: Date
 
-    public init(day: Date, lines: [TimesheetLine], compiledAt: Date) {
-        self.day = Calendar.current.startOfDay(for: day)
+    /// `day` is read as a calendar date in `timeZone`.
+    public init(day: Date, lines: [TimesheetLine], compiledAt: Date, timeZone: TimeZone = .current) {
+        self.dayKey = DayKey.string(for: day, timeZone: timeZone)
         self.linesData = Self.encode(lines)
         self.compiledAt = compiledAt
     }

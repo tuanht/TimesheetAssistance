@@ -19,7 +19,7 @@ struct CompileView: View {
             Divider()
             // Rebuilt per day so the view model loads that day's entries and saved result.
             CompileDayView(model: CompileViewModel(day: day, context: context, settings: settings, models: models))
-                .id(Calendar.current.startOfDay(for: day))
+                .id(DayKey.string(for: day))
         }
         .navigationTitle("Compile")
     }
