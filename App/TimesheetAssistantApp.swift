@@ -1,3 +1,4 @@
+import LocalModels
 import SwiftData
 import SwiftUI
 import TimesheetCore
@@ -7,6 +8,8 @@ struct TimesheetAssistantApp: App {
     private let storeLoad: StoreLoad = StoreLoad.open()
     /// One settings store for every window, so edits in Settings show up live elsewhere.
     @StateObject private var settings = SettingsSession.open()
+    /// One model manager, so a download keeps running when the Settings window closes.
+    @StateObject private var models = MLXModelManager(directory: Self.modelsDirectory())
 
     var body: some Scene {
         WindowGroup {
@@ -30,7 +33,14 @@ struct TimesheetAssistantApp: App {
             SettingsView()
                 .environmentObject(settings.store)
                 .environmentObject(settings)
+                .environmentObject(models)
         }
+    }
+
+    private static func modelsDirectory() -> URL {
+        if let directory = try? AppPaths.modelsDirectory() { return directory }
+        // Application Support couldn't be resolved; downloads then last only until the temporary folder is cleared.
+        return FileManager.default.temporaryDirectory.appendingPathComponent("TimesheetAssistance-Models", isDirectory: true)
     }
 }
 

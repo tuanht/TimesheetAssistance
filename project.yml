@@ -6,6 +6,8 @@ options:
 packages:
   TimesheetCore:
     path: Packages/TimesheetCore
+  LocalModels:
+    path: Packages/LocalModels
 targets:
   TimesheetAssistant:
     type: application
@@ -14,6 +16,7 @@ targets:
       - App
     dependencies:
       - package: TimesheetCore
+      - package: LocalModels
     info:
       path: App/Info.plist
       properties:
