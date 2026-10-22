@@ -8,9 +8,19 @@ import TimesheetCore
 struct TimesheetAssistantApp: App {
     private let storeLoad: StoreLoad = StoreLoad.open()
     /// One settings store for every window, so edits in Settings show up live elsewhere.
-    @StateObject private var settings = SettingsSession.open()
+    @StateObject private var settings: SettingsSession
     /// One model manager, so a download keeps running when the Settings window closes.
-    @StateObject private var models = MLXModelManager(directory: Self.modelsDirectory())
+    @StateObject private var models: MLXModelManager
+    /// One context queue, so entry summaries run one at a time whichever window started them.
+    @StateObject private var context: ContextCoordinator
+
+    init() {
+        let settings = SettingsSession.open()
+        let models = MLXModelManager(directory: Self.modelsDirectory())
+        _settings = StateObject(wrappedValue: settings)
+        _models = StateObject(wrappedValue: models)
+        _context = StateObject(wrappedValue: ContextCoordinator(session: settings, models: models))
+    }
 
     var body: some Scene {
         // A stable id names the frame-autosave key; without it SwiftUI derives the key from the content
@@ -27,6 +37,7 @@ struct TimesheetAssistantApp: App {
             .environmentObject(settings.store)
             .environmentObject(settings)
             .environmentObject(models)
+            .environmentObject(context)
             .modifier(ReleasesUnusedModels(store: settings.store, models: models))
             .alert(
                 "Settings were reset",
@@ -49,6 +60,7 @@ struct TimesheetAssistantApp: App {
                 .environmentObject(settings.store)
                 .environmentObject(settings)
                 .environmentObject(models)
+                .environmentObject(context)
                 .modifier(ReleasesUnusedModels(store: settings.store, models: models))
         }
     }
