@@ -142,4 +142,27 @@ final class MLXModelManagerTests {
         try manager.delete(repo)
         #expect(manager.client(for: repo) !== first)
     }
+
+    @Test func damagedModelFailsWithReadableError() async throws {
+        let folder = directory.appendingPathComponent("mlx-community--Tiny-4bit")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try Data("{}".utf8).write(to: folder.appendingPathComponent("config.json"))
+        try Data().write(to: folder.appendingPathComponent("model.safetensors"))
+        let client = manager().client(for: repo)
+        await #expect(throws: LLMError.modelLoadFailed) { try await client.complete(system: "s", user: "u") }
+    }
+
+    @Test func onlyTheLastRequestedClientIsKept() {
+        let manager = manager()
+        let first = manager.client(for: repo)
+        _ = manager.client(for: "mlx-community/Other-4bit")
+        #expect(manager.client(for: repo) !== first)
+    }
+
+    @Test func releasingClientsDropsTheLoadedOne() {
+        let manager = manager()
+        let first = manager.client(for: repo)
+        manager.releaseClients()
+        #expect(manager.client(for: repo) !== first)
+    }
 }

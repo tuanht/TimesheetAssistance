@@ -1,3 +1,4 @@
+import Combine
 import LocalModels
 import SwiftData
 import SwiftUI
@@ -24,6 +25,7 @@ struct TimesheetAssistantApp: App {
             .environmentObject(settings.store)
             .environmentObject(settings)
             .environmentObject(models)
+            .modifier(ReleasesUnusedModels(store: settings.store, models: models))
             .alert(
                 "Settings were reset",
                 isPresented: Binding(
@@ -45,6 +47,7 @@ struct TimesheetAssistantApp: App {
                 .environmentObject(settings.store)
                 .environmentObject(settings)
                 .environmentObject(models)
+                .modifier(ReleasesUnusedModels(store: settings.store, models: models))
         }
     }
 
@@ -52,6 +55,20 @@ struct TimesheetAssistantApp: App {
         if let directory = try? AppPaths.modelsDirectory() { return directory }
         // Application Support couldn't be resolved; downloads then last only until the temporary folder is cleared.
         return FileManager.default.temporaryDirectory.appendingPathComponent("TimesheetAssistance-Models", isDirectory: true)
+    }
+}
+
+/// Frees on-device models from memory once compiling no longer runs on this Mac. On both scenes, so it
+/// works whichever window is open when the selection changes.
+private struct ReleasesUnusedModels: ViewModifier {
+    let store: SettingsStore
+    let models: MLXModelManager
+
+    func body(content: Content) -> some View {
+        content.onReceive(store.$settings.map(\.model).removeDuplicates()) { selection in
+            if case .local = selection { return }
+            models.releaseClients()
+        }
     }
 }
 

@@ -11,6 +11,11 @@ struct CompileFailureTests {
         #expect(CompileFailure.message(for: LLMError.timeout) == LLMError.timeout.userMessage)
     }
 
+    @Test func modelLoadFailureIsReadable() {
+        #expect(CompileFailure.message(for: LLMError.modelLoadFailed)
+            == "Couldn't load the model. Delete it in Settings › Models and download it again.")
+    }
+
     @Test(arguments: [ParseError.noJSON, .invalidJSON("raw model output {\"items\":")])
     func parseErrorIsReadableAndHidesModelOutput(error: ParseError) {
         let message = CompileFailure.message(for: error)

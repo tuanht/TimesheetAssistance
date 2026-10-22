@@ -12,6 +12,8 @@ public enum LLMError: Error, Equatable, Sendable {
     case timeout
     case emptyResponse
     case modelNotReady
+    /// An on-device model is on disk but couldn't be loaded (damaged or unsupported files).
+    case modelLoadFailed
     /// The server answered with a redirect; redirects are refused so notes never reach an unvetted host.
     case redirectRefused
 
@@ -32,6 +34,8 @@ public enum LLMError: Error, Equatable, Sendable {
             return "The model returned an empty response. Try again."
         case .modelNotReady:
             return "The model isn't ready. Download it in Settings › Models, or load it on your server, then try again."
+        case .modelLoadFailed:
+            return "Couldn't load the model. Delete it in Settings › Models and download it again."
         case .redirectRefused:
             return "The endpoint tried to redirect to another address. Use the final URL directly."
         }

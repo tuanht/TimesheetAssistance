@@ -15,7 +15,8 @@ public actor MLXClient: LLMClient {
         self.directory = directory
     }
 
-    /// Throws `LLMError.modelNotReady` when the weights aren't on disk, and `CancellationError` when cancelled.
+    /// Throws `LLMError.modelNotReady` when the weights aren't on disk, `LLMError.modelLoadFailed` when they
+    /// can't be loaded, and `CancellationError` when cancelled.
     public func complete(system: String, user: String) async throws -> String {
         let container = try await container()
         try Task.checkCancellation()
@@ -44,7 +45,7 @@ public actor MLXClient: LLMClient {
             loading = nil
             throw LLMError.modelNotReady
         }
-        if let loading { return try await loading.value }
+        if let loading { return try await Self.mapLoadError { try await loading.value } }
         let directory = directory
         let task = Task {
             try await LLMModelFactory.shared.loadContainer(
@@ -52,11 +53,22 @@ public actor MLXClient: LLMClient {
         }
         loading = task
         do {
-            return try await task.value
+            return try await Self.mapLoadError { try await task.value }
         } catch {
             // A failed load is retried on the next call.
             if loading == task { loading = nil }
             throw error
+        }
+    }
+
+    /// The library's load errors are raw and technical; the user gets `LLMError.modelLoadFailed` instead.
+    private static func mapLoadError<T>(_ load: () async throws -> T) async throws -> T {
+        do {
+            return try await load()
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            throw LLMError.modelLoadFailed
         }
     }
 }

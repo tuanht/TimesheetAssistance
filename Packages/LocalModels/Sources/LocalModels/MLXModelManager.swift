@@ -92,12 +92,18 @@ public final class MLXModelManager: ObservableObject {
         }
     }
 
-    /// The client for a model. The same client is returned until the model is deleted, so it stays loaded.
+    /// The client for a model. The same client is returned until the model is deleted or another model is
+    /// asked for, so it stays loaded; only one model is kept in memory at a time.
     public func client(for id: String) -> MLXClient {
         if let client = clients[id] { return client }
         let client = MLXClient(directory: ModelStorage.folder(for: id, in: directory))
-        clients[id] = client
+        clients = [id: client]
         return client
+    }
+
+    /// Drops every client, freeing its loaded model once no compile still uses it.
+    public func releaseClients() {
+        clients = [:]
     }
 
     private func report(_ fraction: Double, for id: String, token: UUID) {
