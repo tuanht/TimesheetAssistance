@@ -1,14 +1,18 @@
 import Foundation
 import SwiftData
 
+/// CloudKit is disabled explicitly in every configuration: user data must never leave the Mac,
+/// and the default `.automatic` would start syncing as soon as the app gained iCloud entitlements.
 public enum Store {
     /// On-disk store at `url`; the app passes `AppPaths.storeFile()`.
     public static func container(url: URL) throws -> ModelContainer {
-        try ModelContainer(for: schema, configurations: ModelConfiguration(schema: schema, url: url))
+        try ModelContainer(for: schema, configurations: ModelConfiguration(
+            schema: schema, url: url, cloudKitDatabase: .none))
     }
 
     public static func inMemory() throws -> ModelContainer {
-        try ModelContainer(for: schema, configurations: ModelConfiguration(schema: schema, isStoredInMemoryOnly: true))
+        try ModelContainer(for: schema, configurations: ModelConfiguration(
+            schema: schema, isStoredInMemoryOnly: true, cloudKitDatabase: .none))
     }
 
     /// Entries for the calendar day containing `day`, oldest first.

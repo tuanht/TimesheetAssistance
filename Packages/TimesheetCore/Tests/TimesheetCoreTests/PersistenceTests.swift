@@ -86,4 +86,49 @@ struct PersistenceTests {
         let reopened = ModelContext(try Store.container(url: url))
         #expect(try Store.entries(on: date(2026, 10, 22), in: reopened).map(\.text) == ["kept"])
     }
+
+    @Test func cloudKitDisabledInEveryConfiguration() throws {
+        let dir = try tempDirectory()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        // CloudKitDatabase is not Equatable; its reflection exposes the _none flag.
+        let none = String(reflecting: ModelConfiguration.CloudKitDatabase.none)
+        for container in [try Store.inMemory(), try Store.container(url: dir.appendingPathComponent("store.sqlite"))] {
+            #expect(!container.configurations.isEmpty)
+            for configuration in container.configurations {
+                #expect(String(reflecting: configuration.cloudKitDatabase) == none)
+            }
+        }
+    }
+
+    @Test func fileContainerCompiledDayUniquePerDay() throws {
+        let dir = try tempDirectory()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let url = dir.appendingPathComponent("store.sqlite")
+        do {
+            let context = ModelContext(try Store.container(url: url))
+            context.insert(CompiledDay(day: date(2026, 10, 22, 9), lines: [line("old")], compiledAt: date(2026, 10, 22, 17)))
+            try context.save()
+            context.insert(CompiledDay(day: date(2026, 10, 22, 14), lines: [line("new")], compiledAt: date(2026, 10, 22, 18)))
+            try context.save()
+            let all = try context.fetch(FetchDescriptor<CompiledDay>())
+            #expect(all.count == 1)
+            #expect(all.first?.lines.map(\.description) == ["new"])
+        }
+        do {
+            let context = ModelContext(try Store.container(url: url))
+            context.insert(CompiledDay(day: date(2026, 10, 22, 16), lines: [line("newest")], compiledAt: date(2026, 10, 22, 19)))
+            try context.save()
+        }
+        let reopened = ModelContext(try Store.container(url: url))
+        let all = try reopened.fetch(FetchDescriptor<CompiledDay>())
+        #expect(all.count == 1)
+        #expect(all.first?.lines.map(\.description) == ["newest"])
+        #expect(all.first?.compiledAt == date(2026, 10, 22, 19))
+    }
+
+    private func tempDirectory() throws -> URL {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
+    }
 }
