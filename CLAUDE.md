@@ -42,14 +42,14 @@ swift scripts/render-icon.swift
   - `MLXClient` conforms to `LLMClient`.
   - `HubDownloader` is our own minimal Hugging Face downloader. It stages each download and moves it into place only when every file has arrived.
 - **`Packages/Integrations`** holds the read-only MCP client (`MCPClient`, Streamable HTTP) for Jira and GitHub context. It depends on TimesheetCore only.
-- **`App/`** is a thin SwiftUI layer: `DailyLog/`, `Compile/` and `Settings/`.
+- **`App/`** is a thin SwiftUI layer: `DailyLog/`, `Compile/`, `Settings/`, `Integrations/` (`ContextCoordinator`, Keychain store, sign-in presenter) and `Shared/` (`ModelGate`, `LLMClientFactory`, shared views).
   - One `SettingsSession` / `SettingsStore` is injected into both the main window and the Settings scene.
   - The Settings tab is selected with `@AppStorage("settingsTab")`.
 
 ### Compile pipeline
 
-1. **Prompt.** `PromptBuilder` builds the prompt. Entries get short keys (`e1`, `e2`, …) and their text is wrapped in `<entry>` delimiters.
-2. **Model.** The LLM returns JSON: per entry, a relative effort in `minutes`, any stated time, a description, a ticket, an activity type and a classification.
+1. **Prompt.** `PromptBuilder` builds the prompt. Entries get short keys (`e1`, `e2`, …) and their text is wrapped in `<entry>` delimiters. An entry with a fetched ticket/PR summary gets a neutralised `context:` section.
+2. **Model.** Every model call goes through `ModelGate`, which runs one at a time and is shared with background context jobs. The LLM returns JSON: per entry, a relative effort in `minutes`, any stated time, a description, a ticket, an activity type and a classification.
 3. **Parse.** `ResponseParser` strips `<think>` blocks and code fences, then decodes leniently. A missing or null field becomes empty so the validator can flag it; one bad item doesn't fail the whole reply.
 4. **Schedule.** `Scheduler`, not the model, places entries on the clock:
    - Fixed meeting times keep their slot, and hints get their exact minutes.

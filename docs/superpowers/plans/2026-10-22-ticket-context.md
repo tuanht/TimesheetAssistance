@@ -20,7 +20,7 @@
 - New TimesheetCore code imports only `Foundation`: no `SwiftData`, `Security`, `Darwin`, `AuthenticationServices` or `SwiftUI`. It works on value types (`EntrySnapshot`, plain structs), not on `LogEntry`. The only SwiftData change is the new `LogEntry` fields.
 - `Packages/Integrations` imports only `Foundation`, plus `CryptoKit` under `#if canImport(CryptoKit)`. It depends on TimesheetCore only.
 - Only reference identifiers (`ABC-123`, `owner/repo#45`) and OAuth traffic go to Atlassian and GitHub. Entry text, notes and summaries never do.
-- The MCP hosts are constants: `https://mcp.atlassian.com/v1/mcp` and `https://api.githubcopilot.com/mcp/`. A credential is attached only to a request whose host equals its service's MCP host. Every request refuses redirects.
+- The MCP hosts are constants: `https://mcp.atlassian.com/v2/mcp` (moved from `/v1/mcp` by Ruling R3) and `https://api.githubcopilot.com/mcp/`. A credential is attached only to a request whose host equals its service's MCP host. Every request refuses redirects.
 - Only allow-listed read tools may be called. Anything else throws before any network call.
 - Raw ticket and PR text is never persisted. Only the summary is.
 - Description and body are capped at the first 4,000 characters before summarizing. That trims model input only.
@@ -224,8 +224,8 @@ public enum ContextAction: Equatable, Sendable { case none, fetch, confirmReplac
 public enum ContextPolicy {
     /// On save. `current` = DetectedReferences.canonical; `stored` = LogEntry.contextRefs.
     public static func onSave(current: [String], stored: [String]?, hasSummary: Bool, edited: Bool) -> ContextAction
-    /// Refresh button.
-    public static func onRefresh(current: [String], edited: Bool) -> ContextAction
+    /// Refresh button. `hasSummary` = the summary is not blank.
+    public static func onRefresh(current: [String], hasSummary: Bool, edited: Bool) -> ContextAction
     /// Whether a finished job may write its summary. `jobRefs` = refs the job started with.
     public static func shouldApply(jobRefs: [String], currentRefs: [String]?, editedSinceStart: Bool) -> Bool
 }
@@ -234,11 +234,12 @@ Rules (planner's call where the spec is silent):
 - `onSave`:
   - `current` empty: `.clear` if there's a summary and it isn't edited, otherwise `.none`.
   - `current == stored` and there's a summary: `.none`.
-  - `current == stored` with no summary: `.fetch`, because the previous job never finished.
-  - Changed and `edited`: `.confirmReplace`.
-  - Changed otherwise: `.fetch`.
-- `onRefresh`: empty gives `.none`; `edited` gives `.confirmReplace`; otherwise `.fetch`.
-- `shouldApply`: `jobRefs == currentRefs && !editedSinceStart`. The coordinator sets `contextRefs = jobRefs` when it starts a job, so later saves that change refs make this false.
+  - `current == stored` with no summary and not `edited`: `.fetch`, because the previous job never finished.
+  - `current == stored`, no summary and `edited`: `.none`. A blank edited summary means the user opted out (Ruling R14).
+  - Changed, `edited` and a summary: `.confirmReplace`.
+  - Changed otherwise (including a blank edited summary): `.fetch`, since there is nothing to replace.
+- `onRefresh`: empty gives `.none`; `edited` with a summary gives `.confirmReplace`; otherwise `.fetch`.
+- `shouldApply`: `jobRefs == currentRefs && !editedSinceStart`. `contextRefs` is written only when a summary is applied, together with it, so it always names what the summary was built from (Ruling R13). `currentRefs` is re-detected from the entry's current ticket and text, so a later save that changes refs makes this false.
 
 - [ ] **Step 1: Write failing tests:**
   - `sameRefsWithSummaryDoesNothing`
@@ -247,7 +248,10 @@ Rules (planner's call where the spec is silent):
   - `changedRefsWithEditConfirm`
   - `removedRefsClearUneditedSummary`
   - `removedRefsKeepEditedSummary`
+  - `blankEditedSameRefsDoesNothing`
+  - `blankEditedChangedRefsFetchesWithoutConfirm`
   - `refreshEditedConfirms`
+  - `refreshBlankEditedFetches`
   - `refreshEmptyDoesNothing`
   - `applyRejectsWhenRefsChanged`
   - `applyRejectsWhenEditedDuringJob`
@@ -355,7 +359,7 @@ Exact messages, from the spec:
 - notFound: "Couldn't find ABC-123 in Jira." or "Couldn't find acme/web#7 on GitHub." (the service comes from the ref form)
 - unreachable: "Couldn't reach Jira. Check your connection and try again."
 - signInAgain: "Sign in to Jira again in Settings › Integrations."
-- notApproved: "Your organization hasn't approved this app for GitHub. Ask an admin, or use a personal token instead."
+- notApproved: "Your organization hasn't approved this app for GitHub. Ask an admin, or switch sign-in method in Settings › Integrations." (Neutral wording, since personal-token users see it too.)
 - unexpectedReply: "Jira sent a reply the app couldn't read. Try again later."
 - toolNotAllowed: "The app tried an action it isn't allowed to use." (programming error; never shown with the tool's arguments)
 
@@ -566,7 +570,7 @@ public struct AtlassianOAuth: Sendable {
     public func credentials() -> any CredentialProvider   // refreshes when expiresAt is within 60 s
 }
 ```
-- Discovery (Task 0): the root `https://mcp.atlassian.com/.well-known/oauth-protected-resource` is 404. Use the path-suffixed one for the server URL: `https://mcp.atlassian.com/.well-known/oauth-protected-resource/v2/mcp`. It is also given in the 401 `WWW-Authenticate: Bearer resource_metadata="…"`. It names `authorization_servers: ["https://auth.atlassian.com/<issuer-id>"]`. Fetch `<issuer>/.well-known/oauth-authorization-server`, which gives `authorization_endpoint`, `token_endpoint` (`auth.atlassian.com/oauth/token`), `registration_endpoint` (`<issuer>/dcr/register`) and S256 only. If the server constant moves back to `/v1/mcp`, its metadata is at `https://mcp.atlassian.com/.well-known/oauth-authorization-server` (`/v1/authorize`, `/v1/token`, `/v1/register`). Every discovered endpoint's host must equal `atlassian.com` or end with `.atlassian.com` or `.atlassian.net`. Otherwise throw `.unexpectedReply(.jira)`. Redirects are refused.
+- Discovery (Task 0): the root `https://mcp.atlassian.com/.well-known/oauth-protected-resource` is 404. Use the path-suffixed one for the server URL: `https://mcp.atlassian.com/.well-known/oauth-protected-resource/v2/mcp`. It is also given in the 401 `WWW-Authenticate: Bearer resource_metadata="…"`. It names `authorization_servers: ["https://auth.atlassian.com/<issuer-id>"]`. Fetch `<issuer>/.well-known/oauth-authorization-server`, which gives `authorization_endpoint`, `token_endpoint` (`auth.atlassian.com/oauth/token`), `registration_endpoint` (`<issuer>/dcr/register`) and S256 only. If the server constant moves back to `/v1/mcp`, its metadata is at `https://mcp.atlassian.com/.well-known/oauth-authorization-server` (`/v1/authorize`, `/v1/token`, `/v1/register`). Every discovered endpoint's host must equal `atlassian.com` or end with `.atlassian.com`. Tenant sites (`*.atlassian.net`) are rejected. Otherwise throw `.unexpectedReply(.jira)`. Redirects are refused.
 - Check that `state` in the callback matches. A mismatch or a missing `code` throws `.signInAgain(.jira)`.
 - Ask for the narrowest read scopes listed in the metadata: `read:jira:agent-interface offline_access read:me` (from v2 `scopes_supported`; v1 lists none). The access token goes only to `mcp.atlassian.com`; `auth.atlassian.com` receives only OAuth traffic.
 - If the redirect is loopback (from Task 0), add `LoopbackListener` in the App target, not here. The presenter then receives the URL from it, so this type is unchanged.
@@ -605,10 +609,13 @@ public struct AtlassianOAuth: Sendable {
 actor ModelGate { static let shared: ModelGate; func run<T: Sendable>(_ work: @Sendable () async throws -> T) async rethrows -> T }  // FIFO, one at a time
 @MainActor final class ContextCoordinator: ObservableObject {
     @Published private(set) var status: [UUID: ContextStatus]
+    @Published private(set) var connected: Set<IntegrationService>  // cached; recomputed in init and reset(_:)
     func pendingCount(in ids: Set<UUID>) -> Int   // entries in the set with .fetching/.summarizing
-    func enqueue(_ entry: LogEntry)           // sets entry.contextRefs = detected, then queues
+    func detect(_ entry: LogEntry) -> DetectedReferences  // current ticket pattern and default repo
+    func enqueue(_ entry: LogEntry)           // queues; writes nothing to the entry
     func clear(_ entry: LogEntry)             // .clear action: nil summary/refs, edited=false
-    func isConnected(_ service: IntegrationService) -> Bool
+    func isConnected(_ service: IntegrationService) -> Bool  // reads the cache, never the Keychain
+    var isAnyConnected: Bool
 }
 ```
 Job, run serially on one internal `Task` queue:
@@ -617,8 +624,8 @@ Job, run serially on one internal `Task` queue:
 3. If nothing was fetched, set `.failed` and stop.
 4. Set `.summarizing`. Resolve `ClientPlan`. If unavailable, the failure is `ClientPlan.Unavailable.message`.
 5. Run `ModelGate.shared.run { client.complete(...) }` and `SummaryParser.clean`.
-6. Re-fetch the entry by id from the `ModelContext`. If it's deleted, drop the job. If `ContextPolicy.shouldApply` passes, write the summary, set `contextEdited = false` and `contextUpdatedAt = now`, and save.
-7. If any failures remain (partial or overflow), keep `.failed(messages)`. Otherwise remove the status.
+6. Re-fetch the entry by id from the `ModelContext`. If it's deleted, drop the job. If `ContextPolicy.shouldApply` passes (with refs re-detected from the entry's current ticket and text), write the summary and `contextRefs = jobRefs`, set `contextEdited = false` and `contextUpdatedAt = now`, and save.
+7. If any failures remain, keep `.failed(messages)`. Otherwise remove the status. Overflow is not a failure; the editor's Linked line says "Only the first 5 references were fetched."
 
 LLM errors use `LLMError.userMessage`. Credentials per service come from `IntegrationSettings.*Method`: `PersonalTokenCredentials` or the OAuth provider.
 

@@ -62,7 +62,8 @@ The user's log entries are terse ("ABC-123 fixed retry bug", "reviewed #45"). Th
 - On save, the app computes the entry's reference set. It fetches only when that set differs from the set stored with the current summary (so fixing a typo in the note does not re-fetch).
 - Saving is never delayed: the entry is saved first, then a background job fetches and summarizes.
 - If neither account is connected, nothing is fetched and no status is shown. If only one is connected, only its references are fetched; the others are listed as "Jira not connected" / "GitHub not connected" in the entry's status.
-- A **Refresh** button on the entry re-fetches and re-summarizes. If the summary was edited by the user, Refresh asks "Replace your edited summary?" first.
+- A **Refresh** button on the entry re-fetches and re-summarizes. If the summary was edited by the user and is not blank, Refresh asks "Replace your edited summary?" first.
+- A summary the user cleared counts as opting out: saving with the same references fetches nothing. Changed references fetch without asking, since there is nothing to replace.
 - If the app quits mid-job, nothing is persisted for that job. An entry with references but no summary shows a **Fetch details** button.
 
 ### What is fetched
@@ -80,7 +81,7 @@ The user's log entries are terse ("ABC-123 fixed retry bug", "reviewed #45"). Th
 ### Storage (SwiftData, additive)
 New optional properties on `LogEntry` (lightweight migration, old stores open unchanged):
 - `contextSummary: String?`
-- `contextRefs: [String]?` — the canonical reference set the summary was built from (`ABC-123`, `owner/repo#45`).
+- `contextRefs: [String]?` — the canonical reference set the summary was built from (`ABC-123`, `owner/repo#45`). Written only together with a fetched summary, never when a job starts.
 - `contextEdited: Bool` (default false) — set when the user edits the summary text.
 - `contextUpdatedAt: Date?`
 
@@ -95,7 +96,7 @@ In-flight status and error messages are in-memory only, not persisted.
 ### MCP client
 - Library: the official Swift MCP SDK (`modelcontextprotocol/swift-sdk`), Streamable HTTP transport, pinned to an exact version like `mlx-swift-lm`. Lives in a new package `Packages/Integrations` so TimesheetCore stays dependency-free. If the SDK proves unsuitable, a minimal hand-written JSON-RPC client over `URLSession` for the two or three tools needed is acceptable.
 - Servers (constants, not user-editable):
-  - Atlassian: `https://mcp.atlassian.com/v1/mcp`
+  - Atlassian: `https://mcp.atlassian.com/v2/mcp` (the endpoint Atlassian documents for API tokens; see Spike findings)
   - GitHub: `https://api.githubcopilot.com/mcp/`
 - Only read tools are called (e.g. Jira `getJiraIssue`; GitHub `pull_request_read`). The client keeps an allow-list of tool names and refuses anything else.
 - Every HTTP request refuses redirects, as `OpenAICompatibleClient` does.
@@ -112,7 +113,7 @@ So each service offers two methods in Settings › Integrations, and the user pi
 **App sign-in**
 - GitHub: a GitHub App with only *Pull requests: read* (and *Metadata: read*), installed on the org by an admin. Builder's call: the App's client ID is entered in Settings, not hard-coded, so any org can use its own App and no secret ships in the binary. Sign-in uses the OAuth device flow (no client secret, no redirect).
 - Jira: OAuth 2.1 with PKCE and dynamic client registration via the system browser. Builder's call: whether the redirect is a custom URL scheme or a loopback `http://127.0.0.1:<port>` listener is settled by the spike, depending on what Atlassian's domain allowlist accepts.
-- Access and refresh tokens are kept; expired tokens refresh silently.
+- Access and refresh tokens are kept. Expired Jira tokens refresh silently. GitHub App tokens are not refreshed, because refreshing needs a client secret and none ships: when one expires (after 8 hours, unless the org turns off token expiration for the App), the user signs in again. Settings says so under GitHub App sign-in.
 
 **Personal token**
 - GitHub: a fine-grained personal access token with *Pull requests: read* on the chosen repos, pasted by the user.
@@ -124,7 +125,7 @@ So each service offers two methods in Settings › Integrations, and the user pi
 - Secrets are stored in the Keychain via `KeychainStore` (behind `TokenStore`), one account per service and method. A token is attached only to requests whose host equals that service's MCP host.
 - Switching method or disconnecting deletes the old secrets.
 - When auth fails, the entry shows "Sign in to Jira again in Settings › Integrations."
-- Admin block: show the server's refusal as plain English, e.g. "Your organization hasn't approved this app for GitHub. Ask an admin, or use a personal token instead."
+- Admin block: show the server's refusal as plain English, e.g. "Your organization hasn't approved this app for GitHub. Ask an admin, or switch sign-in method in Settings › Integrations." The wording names no method, because personal-token users can be blocked too.
 
 ### Settings
 - New tab **Integrations** (`settingsTab` tag `integrations`):
@@ -154,7 +155,7 @@ So each service offers two methods in Settings › Integrations, and the user pi
 
 ### Tests (Swift Testing, TDD)
 - Reference parsing: Jira keys, all three PR forms, default repo on/off, de-dupe, cap, junk input.
-- Re-fetch decision: same refs → no fetch; changed refs → fetch; edited summary → Refresh needs confirmation.
+- Re-fetch decision: same refs → no fetch; changed refs → fetch; edited summary → Refresh needs confirmation; blank edited summary → opted out.
 - `ContextPromptBuilder`: delimiters, neutralisation, input caps.
 - Summary cleanup: `<think>`, fences, empty reply → error.
 - `PromptBuilder` with and without context.
