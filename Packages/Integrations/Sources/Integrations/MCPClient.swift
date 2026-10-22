@@ -6,6 +6,9 @@ struct MCPToolError: Error, Equatable {
     let message: String
 }
 
+/// The server dropped our `Mcp-Session-Id` (HTTP 404). Never leaves `MCPClient`.
+private struct SessionExpired: Error {}
+
 /// Calls allow-listed read tools on one MCP server over Streamable HTTP.
 public actor MCPClient {
     static let protocolVersion = "2025-06-18"
@@ -28,10 +31,33 @@ public actor MCPClient {
     /// Returns the tool result's `structuredContent` if present, else the first text content parsed as JSON, else `.string(text)`.
     public func callTool(_ name: String, arguments: [String: JSONValue]) async throws -> JSONValue {
         guard server.allowedTools.contains(name) else { throw ContextError.toolNotAllowed(name) }
+        let params = JSONValue.object(["name": .string(name), "arguments": .object(arguments)])
+        do {
+            return try await initializedCall(params)
+        } catch is SessionExpired {
+            // The spec requires a fresh session after a 404; retry once.
+            resetSession()
+            do {
+                return try await initializedCall(params)
+            } catch is SessionExpired {
+                resetSession()
+                throw ContextError.unexpectedReply(server.service)
+            }
+        } catch ContextError.signInAgain(let service) {
+            // A new token must not reuse the old session.
+            resetSession()
+            throw ContextError.signInAgain(service)
+        }
+    }
+
+    private func initializedCall(_ params: JSONValue) async throws -> JSONValue {
         try await ensureInitialized()
-        let result = try await request(
-            "tools/call", params: .object(["name": .string(name), "arguments": .object(arguments)]))
-        return try toolValue(result)
+        return try toolValue(try await request("tools/call", params: params))
+    }
+
+    private func resetSession() {
+        initialization = nil
+        sessionID = nil
     }
 
     // MARK: - Handshake
@@ -49,6 +75,8 @@ public actor MCPClient {
     }
 
     private func handshake() async throws {
+        // `initialize` never carries a session ID; the reply sets the new one.
+        sessionID = nil
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev"
         _ = try await request("initialize", params: .object([
             "protocolVersion": .string(Self.protocolVersion),
@@ -164,6 +192,8 @@ public actor MCPClient {
         case 300..<400:
             // Redirects are refused, so the server is effectively unreachable.
             throw ContextError.unreachable(service)
+        case 404 where sessionID != nil:
+            throw SessionExpired()
         case 401:
             throw ContextError.signInAgain(service)
         case 400 where http.value(forHTTPHeaderField: "WWW-Authenticate")?.contains("invalid_token") == true:

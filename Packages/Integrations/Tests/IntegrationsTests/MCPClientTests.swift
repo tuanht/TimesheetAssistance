@@ -355,6 +355,81 @@ struct MCPClientTests {
                 ["initialize", "initialize", "notifications/initialized", "tools/call"])
     }
 
+    // MARK: - Session recovery
+
+    /// Initialize replies hand out `session-1`, `session-2`, …; other methods use `rest`.
+    private static func numberedSessions(
+        _ rest: @escaping @Sendable (_ method: String, _ id: Int?, _ call: Int) -> StubProtocol.Reply
+    ) -> StubProtocol.Router {
+        let initializes = Counter(), calls = Counter()
+        return { method, id in
+            guard method == "initialize" else { return rest(method, id, calls.next(method)) }
+            let n = initializes.next(method)
+            return .response(
+                status: 200,
+                headers: ["Content-Type": "text/event-stream", "Mcp-Session-Id": "session-\(n)"],
+                body: sse(#"{"jsonrpc":"2.0","id":\#(id ?? 0),"result":{"protocolVersion":"2025-06-18"}}"#))
+        }
+    }
+
+    private func trace() -> [String] {
+        StubProtocol.requests.map {
+            "\(StubProtocol.method(of: $0) ?? "?") \($0.value(forHTTPHeaderField: "Mcp-Session-Id") ?? "-")"
+        }
+    }
+
+    @Test func expiredSessionReinitializesAndRetries() async throws {
+        let sut = client(Self.numberedSessions { method, id, call in
+            if method == "notifications/initialized" { return Self.accepted }
+            return call == 1 ? .response(status: 404, body: Data())
+                : Self.toolResult(id: id, result: Self.textContent(Self.prJSON))
+        })
+        #expect(try await readPR(sut) == Self.prValue)
+        #expect(trace() == [
+            "initialize -", "notifications/initialized session-1", "tools/call session-1",
+            "initialize -", "notifications/initialized session-2", "tools/call session-2",
+        ])
+    }
+
+    @Test func repeatedExpiryMapsToUnexpectedReply() async throws {
+        let sut = client(Self.numberedSessions { method, _, _ in
+            method == "notifications/initialized" ? Self.accepted : .response(status: 404, body: Data())
+        })
+        await #expect(throws: ContextError.unexpectedReply(.github)) { try await readPR(sut) }
+        #expect(StubProtocol.requests.count == 6)
+    }
+
+    @Test func failedInitializedNotificationStartsFreshSession() async throws {
+        let sut = client(Self.numberedSessions { method, id, call in
+            if method == "notifications/initialized" {
+                return call == 1 ? .response(status: 500, body: Data()) : Self.accepted
+            }
+            return Self.toolResult(id: id, result: Self.textContent("{}"))
+        })
+        await #expect(throws: ContextError.unexpectedReply(.github)) { try await readPR(sut) }
+        _ = try await readPR(sut)
+        #expect(trace() == [
+            "initialize -", "notifications/initialized session-1",
+            "initialize -", "notifications/initialized session-2", "tools/call session-2",
+        ])
+    }
+
+    @Test func unauthorizedResetsSession() async throws {
+        let sut = client(Self.numberedSessions { method, id, call in
+            if method == "notifications/initialized" { return Self.accepted }
+            return call == 2 ? .response(status: 401, body: Data())
+                : Self.toolResult(id: id, result: Self.textContent("{}"))
+        })
+        _ = try await readPR(sut)
+        await #expect(throws: ContextError.signInAgain(.github)) { try await readPR(sut) }
+        _ = try await readPR(sut)
+        #expect(trace() == [
+            "initialize -", "notifications/initialized session-1", "tools/call session-1",
+            "tools/call session-1",
+            "initialize -", "notifications/initialized session-2", "tools/call session-2",
+        ])
+    }
+
     @Test func messageNeverContainsToken() async throws {
         let routers: [StubProtocol.Router] = [
             status(401, body: "unauthorized \(Self.token)"),
@@ -377,6 +452,19 @@ struct MCPClientTests {
             }
         }
         #expect(seen == routers.count)
+    }
+}
+
+/// Counts calls per key, starting at 1.
+private final class Counter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var counts: [String: Int] = [:]
+
+    func next(_ key: String) -> Int {
+        lock.withLock {
+            counts[key, default: 0] += 1
+            return counts[key]!
+        }
     }
 }
 
