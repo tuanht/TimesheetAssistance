@@ -33,6 +33,49 @@ struct PersistenceTests {
         #expect(result.map(\.text) == ["first", "second"])
     }
 
+    @Test func entriesInRangeSortedByDayThenCreation() throws {
+        let context = ModelContext(try Store.inMemory())
+        let late = LogEntry(day: date(2026, 10, 22), type: .note, ticketRef: nil, durationHint: nil, text: "22 late")
+        late.createdAt = date(2026, 10, 22, 15)
+        let early = LogEntry(day: date(2026, 10, 22), type: .note, ticketRef: nil, durationHint: nil, text: "22 early")
+        early.createdAt = date(2026, 10, 22, 9)
+        let first = LogEntry(day: date(2026, 10, 21), type: .note, ticketRef: nil, durationHint: nil, text: "21")
+        first.createdAt = date(2026, 10, 23, 9)
+        let outside = LogEntry(day: date(2026, 10, 26), type: .note, ticketRef: nil, durationHint: nil, text: "26")
+        for entry in [late, outside, early, first] { context.insert(entry) }
+        try context.save()
+
+        let range = DayRange(from: date(2026, 10, 20), to: date(2026, 10, 25), calendar: calendar)
+        let result = try Store.entries(in: range, in: context, calendar: calendar)
+        #expect(result.map(\.text) == ["21", "22 early", "22 late"])
+    }
+
+    @Test func compiledInRangeSortedByDay() throws {
+        let context = ModelContext(try Store.inMemory())
+        for day in [23, 21, 30] {
+            context.insert(CompiledDay(day: date(2026, 10, day), lines: [line("x")], compiledAt: date(2026, 10, day, 18)))
+        }
+        try context.save()
+
+        let range = DayRange(from: date(2026, 10, 20), to: date(2026, 10, 25), calendar: calendar)
+        let result = try Store.compiled(in: range, in: context, calendar: calendar)
+        #expect(result.map(\.dayKey) == ["2026-10-21", "2026-10-23"])
+    }
+
+    @Test func moveChangesDayKey() throws {
+        let context = ModelContext(try Store.inMemory())
+        let entry = LogEntry(day: date(2026, 10, 22, 10), type: .note, ticketRef: nil, durationHint: nil, text: "moved")
+        context.insert(entry)
+        try context.save()
+
+        entry.move(to: date(2026, 10, 24, 23, 30))
+        try context.save()
+
+        #expect(entry.dayKey == "2026-10-24")
+        #expect(try Store.entries(on: date(2026, 10, 22), in: context).isEmpty)
+        #expect(try Store.entries(on: date(2026, 10, 24), in: context).map(\.text) == ["moved"])
+    }
+
     @Test func dayStoredAsCalendarDateKey() {
         let entry = LogEntry(day: date(2026, 10, 22, 17, 45), type: .pullRequest, ticketRef: nil, durationHint: nil, text: "pr")
         #expect(entry.dayKey == "2026-10-22")

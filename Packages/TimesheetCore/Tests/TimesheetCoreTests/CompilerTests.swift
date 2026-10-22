@@ -84,6 +84,54 @@ struct CompilerTests {
         #expect(result.lines.filter { $0.entryId == entries[1].id }.allSatisfy { $0.ticket == "DEF-2" })
     }
 
+    @Test func ticketDetectedFromTextWhenModelOmitsIt() async throws {
+        let entries = [entry("Reviewed PROJ-42 rollout")]
+        let (result, _) = try await compile(entries, response(item("e1", ticket: nil)))
+        #expect(!result.lines.isEmpty)
+        #expect(result.lines.allSatisfy { $0.ticket == "PROJ-42" })
+    }
+
+    @Test func entryTicketBeatsDetectedAndModel() async throws {
+        let entries = [entry("Follow-up on BB-2", ticketRef: "AA-1")]
+        let (result, _) = try await compile(entries, response(item("e1", ticket: "CC-3")))
+        #expect(!result.lines.isEmpty)
+        #expect(result.lines.allSatisfy { $0.ticket == "AA-1" })
+    }
+
+    // The model's "CC-3" is not in the text, so the text match wins.
+    @Test func detectedBeatsModel() async throws {
+        let entries = [entry("Follow-up on BB-2")]
+        let (result, _) = try await compile(entries, response(item("e1", ticket: "CC-3")))
+        #expect(!result.lines.isEmpty)
+        #expect(result.lines.allSatisfy { $0.ticket == "BB-2" })
+    }
+
+    @Test func modelTicketFoundInTextBeatsEarlierMatch() async throws {
+        let entries = [entry("Fixed UTF-8 decoding for ABC-12")]
+        let (result, _) = try await compile(entries, response(item("e1", ticket: "ABC-12")))
+        #expect(!result.lines.isEmpty)
+        #expect(result.lines.allSatisfy { $0.ticket == "ABC-12" })
+    }
+
+    @Test func firstTextMatchIsFallbackWithoutModelTicket() async throws {
+        let entries = [entry("Fixed UTF-8 decoding for ABC-12")]
+        let (result, _) = try await compile(entries, response(item("e1", ticket: nil)))
+        #expect(!result.lines.isEmpty)
+        #expect(result.lines.allSatisfy { $0.ticket == "UTF-8" })
+    }
+
+    @Test func skippedEntryStillGetsDetectedTicket() async throws {
+        let entries = [entry("Work"), entry("Follow-up on BB-2")]
+        let (result, _) = try await compile(entries, response(item("e1")))
+        let skipped = result.lines.filter { $0.entryId == entries[1].id }
+        #expect(!skipped.isEmpty)
+        #expect(skipped.allSatisfy { $0.ticket == "BB-2" })
+    }
+
+    @Test func ticketTypeDisplayName() {
+        #expect(EntryType.ticket.displayName == "Ticket")
+    }
+
     @Test func blankModelTicketIsNil() async throws {
         let entries = [entry("Work")]
         let (result, _) = try await compile(entries, response(item("e1", ticket: "  ")))
@@ -92,12 +140,12 @@ struct CompilerTests {
 
     @Test func skippedEntryStillGetsLine() async throws {
         let longText = String(repeating: "x", count: 100)
-        let entries = [entry("Work"), entry(longText)]
+        let entries = [entry("Work"), entry("  " + longText + "\n")]
         let (result, _) = try await compile(entries, response(item("e1")))
 
         let skipped = result.lines.filter { $0.entryId == entries[1].id }
         #expect(!skipped.isEmpty)
-        #expect(skipped.allSatisfy { $0.description == String(repeating: "x", count: 80) })
+        #expect(skipped.allSatisfy { $0.description == longText })
         #expect(skipped.allSatisfy { $0.activityType.isEmpty && $0.classification.isEmpty })
         #expect(result.issues.contains { $0.entryId == entries[1].id && $0.kind == .unknownActivityType })
         #expect(result.issues.contains { $0.entryId == entries[1].id && $0.kind == .unknownClassification })

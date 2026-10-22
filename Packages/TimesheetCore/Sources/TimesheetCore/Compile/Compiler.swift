@@ -37,7 +37,7 @@ public struct Compiler: Sendable {
         }
 
         let fields = entries.map { entry in
-            LineFields(entry: entry, item: itemsById[entry.id])
+            LineFields(entry: entry, item: itemsById[entry.id], ticketPattern: settings.template.ticketPattern)
         }
         let scheduleItems = zip(entries, fields).map { entry, f in
             ScheduleItem(
@@ -71,17 +71,14 @@ private struct LineFields {
     var classification: String
 
     static let skippedMinutes = 30
-    static let skippedDescriptionLength = 80
 
-    init(entry: EntrySnapshot, item: ModelItem?) {
-        let entryTicket = LineFields.nonBlank(entry.ticketRef)
+    init(entry: EntrySnapshot, item: ModelItem?, ticketPattern: String) {
+        ticket = LineFields.ticket(entry: entry, modelTicket: item?.ticket, pattern: ticketPattern)
         guard let item else {
             // Model skipped the entry: keep it, with empty fields the validator will flag.
             estimatedMinutes = LineFields.skippedMinutes
             fixed = nil
-            description = String(entry.text.trimmingCharacters(in: .whitespacesAndNewlines)
-                .prefix(LineFields.skippedDescriptionLength))
-            ticket = entryTicket
+            description = entry.text.trimmingCharacters(in: .whitespacesAndNewlines)
             activityType = ""
             classification = ""
             return
@@ -94,9 +91,19 @@ private struct LineFields {
             fixed = nil
         }
         description = item.description.trimmingCharacters(in: .whitespacesAndNewlines)
-        ticket = entryTicket ?? LineFields.nonBlank(item.ticket)
         activityType = item.activityType
         classification = item.classification
+    }
+
+    /// Entry's own ticket first, then the model's if the text contains it, then the first
+    /// text match, then the model's. Checking the model against the text keeps look-alikes
+    /// such as `UTF-8` from beating the real ticket.
+    private static func ticket(entry: EntrySnapshot, modelTicket: String?, pattern: String) -> String? {
+        if let own = nonBlank(entry.ticketRef) { return own }
+        let found = TicketDetector.tickets(in: entry.text, pattern: pattern)
+        let model = nonBlank(modelTicket)
+        if let model, found.contains(model) { return model }
+        return found.first ?? model
     }
 
     private static func nonBlank(_ s: String?) -> String? {

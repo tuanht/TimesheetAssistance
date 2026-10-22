@@ -2,22 +2,27 @@ import SwiftData
 import SwiftUI
 import TimesheetCore
 
-/// Sheet that creates a new entry on `day`, or edits `entry` in place.
+/// Sheet that creates a new entry on the picked day, or edits `entry` in place.
 struct EntryEditor: View {
-    let day: Date
     let entry: LogEntry?
+    /// The day the sheet opened on; the entry moves only when the user picks another.
+    private let initialDay: Date
 
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var store: SettingsStore
+    @State private var day: Date
     @State private var type: EntryType
     @State private var ticketRef: String
     @State private var durationHint: String
     @State private var text: String
     @State private var saveError: String?
 
-    init(day: Date, entry: LogEntry?) {
-        self.day = day
+    /// A new entry starts on `defaultDay`; an existing one on the day of its `dayKey`.
+    init(defaultDay: Date, entry: LogEntry?) {
         self.entry = entry
+        initialDay = entry.flatMap { Self.date(forKey: $0.dayKey) } ?? defaultDay
+        _day = State(initialValue: initialDay)
         _type = State(initialValue: entry?.type ?? .ticket)
         _ticketRef = State(initialValue: entry?.ticketRef ?? "")
         _durationHint = State(initialValue: entry?.durationHint ?? "")
@@ -33,7 +38,11 @@ struct EntryEditor: View {
                         Text(type.displayName).tag(type)
                     }
                 }
-                TextField("Ticket", text: $ticketRef, prompt: Text("e.g. ABC-123"))
+                LabeledContent("Day") {
+                    CalendarButton(title: day.formatted(date: .abbreviated, time: .omitted), date: $day,
+                                   accessibilityLabel: "Day")
+                }
+                TextField("Ticket", text: $ticketRef, prompt: Text(ticketPrompt))
                 TextField("Duration hint", text: $durationHint, prompt: Text("e.g. ~2h"))
             }
             Text("Text").font(.headline)
@@ -58,6 +67,14 @@ struct EntryEditor: View {
         .frame(minWidth: 520, idealWidth: 600, minHeight: 440)
     }
 
+    /// Hints at the ticket the compiler would find in the text when the field is left blank.
+    private var ticketPrompt: String {
+        if let found = TicketDetector.firstTicket(in: text, pattern: store.settings.template.ticketPattern) {
+            return "Found in text: \(found)"
+        }
+        return "e.g. ABC-123"
+    }
+
     private var isTextBlank: Bool {
         text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
@@ -71,6 +88,7 @@ struct EntryEditor: View {
             entry.ticketRef = ticket
             entry.durationHint = hint
             entry.text = text
+            if DayKey.string(for: day) != DayKey.string(for: initialDay) { entry.move(to: day) }
         } else {
             context.insert(LogEntry(day: day, type: type, ticketRef: ticket, durationHint: hint, text: text))
         }
@@ -81,6 +99,16 @@ struct EntryEditor: View {
             context.rollback()
             saveError = "Could not save: \(error.localizedDescription)"
         }
+    }
+
+    /// Reads a `yyyy-MM-dd` day key as that date in the current time zone; nil if it doesn't parse.
+    /// Built from components, so a day whose midnight falls in a DST gap still resolves.
+    private static func date(forKey key: String) -> Date? {
+        let parts = key.split(separator: "-").compactMap { Int($0) }
+        guard parts.count == 3 else { return nil }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = .current
+        return calendar.date(from: DateComponents(year: parts[0], month: parts[1], day: parts[2]))
     }
 
     /// Blank optional fields are stored as nil, not as empty strings.

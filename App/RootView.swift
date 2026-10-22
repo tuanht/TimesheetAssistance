@@ -11,8 +11,14 @@ struct RootView: View {
 
     @State private var selection: Section? = .dailyLog
     /// Shared by the daily log and Compile so both work on the same day.
-    @State private var day = Date()
-    /// The calendar date that was "today" when last checked, so a day change can move `day` along.
+    @State private var anchor = Date()
+    /// Which period the daily log shows around `anchor`.
+    @AppStorage("logPeriod") private var logPeriod: PeriodKind = .day
+    /// What Compile works on: a period around `anchor`, or the custom range below.
+    @AppStorage("compileRange") private var compileRange: CompileRangeKind = .day
+    @State private var customStart = Date()
+    @State private var customEnd = Date()
+    /// The calendar date that was "today" when last checked, so a day change can move `anchor` along.
     @State private var today = DayKey.string(for: Date())
     @Environment(\.scenePhase) private var scenePhase
 
@@ -25,9 +31,9 @@ struct RootView: View {
         } detail: {
             switch selection {
             case .dailyLog:
-                DailyLogView(day: $day)
+                DailyLogView(anchor: $anchor, kind: $logPeriod)
             case .compile:
-                CompileView(day: $day)
+                CompileView(anchor: $anchor, kind: $compileRange, customStart: $customStart, customEnd: $customEnd)
             case nil:
                 EmptyView()
             }
@@ -44,7 +50,7 @@ struct RootView: View {
         let now = Date()
         let newToday = DayKey.string(for: now)
         guard newToday != today else { return }
-        if DayKey.string(for: day) == today { day = now }
+        if DayKey.string(for: anchor) == today { anchor = now }
         today = newToday
     }
 }

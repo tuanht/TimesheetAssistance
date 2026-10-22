@@ -5,7 +5,7 @@ public enum EntryType: String, Codable, CaseIterable, Sendable {
 
     public var displayName: String {
         switch self {
-        case .ticket: "Ticket / task"
+        case .ticket: "Ticket"
         case .note: "Note"
         case .pullRequest: "Pull request"
         case .meeting: "Meeting notes"

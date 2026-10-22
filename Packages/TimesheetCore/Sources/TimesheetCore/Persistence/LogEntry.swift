@@ -33,6 +33,11 @@ public final class LogEntry {
         set { typeRaw = newValue.rawValue }
     }
 
+    /// Moves the entry to the calendar date of `day` in `timeZone`.
+    public func move(to day: Date, timeZone: TimeZone = .current) {
+        dayKey = DayKey.string(for: day, timeZone: timeZone)
+    }
+
     public var snapshot: EntrySnapshot {
         EntrySnapshot(id: id, type: type, ticketRef: ticketRef, durationHint: durationHint, text: text)
     }

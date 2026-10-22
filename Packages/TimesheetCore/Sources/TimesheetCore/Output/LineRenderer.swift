@@ -15,6 +15,14 @@ public enum LineRenderer {
             .joined(separator: "\n")
     }
 
+    /// Each day rendered with `render(_:day:template:)`, in the given order; days with no lines are skipped.
+    public static func render(days: [(day: Date, lines: [TimesheetLine])], template: TemplateSettings) -> String {
+        days
+            .filter { !$0.lines.isEmpty }
+            .map { render($0.lines, day: $0.day, template: template) }
+            .joined(separator: "\n")
+    }
+
     private static func value(
         of field: TemplateField, line: TimesheetLine, dateText: String, template: TemplateSettings
     ) -> String {

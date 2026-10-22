@@ -2,49 +2,23 @@ import SwiftData
 import SwiftUI
 import TimesheetCore
 
-/// The private work log for one day: pick a day, then add, edit and delete its entries.
+/// The private work log for a day, week or month: pick a period, then add, edit and delete its entries.
 struct DailyLogView: View {
-    @Binding var day: Date
+    @Binding var anchor: Date
+    @Binding var kind: PeriodKind
 
     var body: some View {
+        let range = Period.range(kind, containing: anchor)
         VStack(spacing: 0) {
-            DayBar(day: $day)
+            PeriodBar(anchor: $anchor, kind: $kind)
                 .padding(.horizontal)
                 .padding(.vertical, 8)
             Divider()
-            // Rebuilt per day so its @Query predicate matches the selected day.
-            EntryList(day: day)
-                .id(DayKey.string(for: day))
+            // Rebuilt per period so its @Query predicate matches the selected days.
+            EntryList(anchor: anchor, kind: kind, range: range)
+                .id(range.keys().joined(separator: ",") + kind.rawValue)
         }
         .navigationTitle("Daily log")
-    }
-}
-
-/// Day picker shared by the daily log and Compile.
-struct DayBar: View {
-    @Binding var day: Date
-
-    var body: some View {
-        HStack {
-            Button { shift(by: -1) } label: { Image(systemName: "chevron.left") }
-                .accessibilityLabel("Previous day")
-                .help("Previous day")
-            DatePicker("Day", selection: $day, displayedComponents: .date)
-                .labelsHidden()
-                .accessibilityLabel("Day")
-            Button { shift(by: 1) } label: { Image(systemName: "chevron.right") }
-                .accessibilityLabel("Next day")
-                .help("Next day")
-            Button("Today") { day = Date() }
-                .disabled(Calendar.current.isDateInToday(day))
-            Spacer()
-        }
-    }
-
-    private func shift(by days: Int) {
-        if let moved = Calendar.current.date(byAdding: .day, value: days, to: day) {
-            day = moved
-        }
     }
 }
 
@@ -62,7 +36,9 @@ private enum EditorTarget: Identifiable {
 }
 
 private struct EntryList: View {
-    let day: Date
+    let anchor: Date
+    let kind: PeriodKind
+    let range: DayRange
 
     @Environment(\.modelContext) private var context
     @Query private var entries: [LogEntry]
@@ -71,20 +47,31 @@ private struct EntryList: View {
     @State private var pendingDelete: LogEntry?
     @State private var deleteError: String?
 
-    init(day: Date) {
-        self.day = day
-        let key = DayKey.string(for: day)
-        _entries = Query(filter: #Predicate<LogEntry> { $0.dayKey == key }, sort: \.createdAt)
+    init(anchor: Date, kind: PeriodKind, range: DayRange) {
+        self.anchor = anchor
+        self.kind = kind
+        self.range = range
+        let keys = range.keys()
+        _entries = Query(filter: #Predicate<LogEntry> { keys.contains($0.dayKey) },
+                         sort: [SortDescriptor(\.dayKey), SortDescriptor(\.createdAt)])
     }
 
     var body: some View {
-        List(entries, selection: $selection) { entry in
-            EntryRow(entry: entry)
+        List(selection: $selection) {
+            if kind == .day {
+                ForEach(entries) { EntryRow(entry: $0) }
+            } else {
+                ForEach(daysWithEntries, id: \.key) { day in
+                    Section(day.date.formatted(.dateTime.weekday(.wide).month(.abbreviated).day())) {
+                        ForEach(day.entries) { EntryRow(entry: $0) }
+                    }
+                }
+            }
         }
         .overlay {
             if entries.isEmpty {
-                ContentUnavailableView("No entries", systemImage: "square.and.pencil",
-                                       description: Text("Press ⌘N to log work for this day."))
+                ContentUnavailableView(emptyTitle, systemImage: "square.and.pencil",
+                                       description: Text("Press ⌘N to log work for this \(unit)."))
             }
         }
         .contextMenu(forSelectionType: LogEntry.ID.self) { ids in
@@ -118,8 +105,8 @@ private struct EntryList: View {
         }
         .sheet(item: $editor) { target in
             switch target {
-            case .new: EntryEditor(day: day, entry: nil)
-            case .edit(let entry): EntryEditor(day: day, entry: entry)
+            case .new: EntryEditor(defaultDay: newEntryDay, entry: nil)
+            case .edit(let entry): EntryEditor(defaultDay: newEntryDay, entry: entry)
             }
         }
         .confirmationDialog(deleteTitle, isPresented: isConfirmingDelete, titleVisibility: .visible) {
@@ -132,6 +119,24 @@ private struct EntryList: View {
             Button("OK") { deleteError = nil }
         } message: {
             Text(deleteError ?? "")
+        }
+    }
+
+    private var unit: String { kind.displayName.lowercased() }
+
+    /// Day mode keeps its original wording.
+    private var emptyTitle: String { kind == .day ? "No entries" : "No entries this \(unit)" }
+
+    /// The anchor day when it is in range, else the first day of the range.
+    private var newEntryDay: Date {
+        range.keys().contains(DayKey.string(for: anchor)) ? anchor : range.start
+    }
+
+    /// Days of the range that have entries, oldest first, each with its entries in `entries` order.
+    private var daysWithEntries: [(key: String, date: Date, entries: [LogEntry])] {
+        let byKey = Dictionary(grouping: entries, by: \.dayKey)
+        return zip(range.keys(), range.days()).compactMap { key, date in
+            byKey[key].map { (key: key, date: date, entries: $0) }
         }
     }
 
