@@ -7,9 +7,9 @@ private struct ScrollsOnlyWhenOverflowing: ViewModifier {
 
     func body(content: Content) -> some View {
         content
+            // The container already excludes the toolbar inset, so adding the inset again makes a page that just fits scroll.
             .onScrollGeometryChange(for: Bool.self) { geometry in
-                geometry.contentSize.height + geometry.contentInsets.top + geometry.contentInsets.bottom
-                    > geometry.containerSize.height + 0.5
+                geometry.contentSize.height > geometry.containerSize.height + 0.5
             } action: { _, newValue in
                 overflows = newValue
             }
