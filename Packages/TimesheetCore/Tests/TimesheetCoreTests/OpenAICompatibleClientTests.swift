@@ -8,6 +8,10 @@ final class StubProtocol: URLProtocol, @unchecked Sendable {
     enum Reply {
         case response(status: Int, body: Data)
         case failure(URLError)
+        /// Redirects to `location` with the given 3xx status.
+        case redirect(status: Int, location: String)
+        /// Never answers, so the caller can cancel.
+        case hang
     }
 
     private static let lock = NSLock()
@@ -47,6 +51,17 @@ final class StubProtocol: URLProtocol, @unchecked Sendable {
             client?.urlProtocolDidFinishLoading(self)
         case .failure(let error):
             client?.urlProtocol(self, didFailWithError: error)
+        case .redirect(let status, let location):
+            let response = HTTPURLResponse(
+                url: request.url!, statusCode: status, httpVersion: "HTTP/1.1",
+                headerFields: ["Location": location])!
+            var next = request
+            next.url = URL(string: location)!
+            client?.urlProtocol(self, wasRedirectedTo: next, redirectResponse: response)
+            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+            client?.urlProtocolDidFinishLoading(self)
+        case .hang:
+            break
         }
     }
 
@@ -216,6 +231,44 @@ struct OpenAICompatibleClientTests {
         await #expect(throws: LLMError.unreachable("http://10.0.0.2:8080")) {
             _ = try await client(.failure(URLError(.cannotFindHost)), config: withUser)
                 .complete(system: "s", user: "u")
+        }
+    }
+
+    @Test(arguments: [307, 308])
+    func redirectIsRefused(status: Int) async throws {
+        let sut = client(.redirect(status: status, location: "https://evil.example.com/v1/chat/completions"),
+                         apiKey: "sk-test")
+        await #expect(throws: LLMError.redirectRefused) {
+            _ = try await sut.complete(system: "private notes", user: "u")
+        }
+        #expect(StubProtocol.requests.count == 1)
+        #expect(StubProtocol.requests.allSatisfy { $0.url?.host() == "localhost" })
+        #expect(LLMError.redirectRefused.userMessage
+            == "The endpoint tried to redirect to another address. Use the final URL directly.")
+    }
+
+    @Test func testConnectionRefusesRedirect() async throws {
+        let sut = client(.redirect(status: 307, location: "https://evil.example.com/v1/models"))
+        await #expect(throws: LLMError.redirectRefused) {
+            _ = try await sut.testConnection()
+        }
+        #expect(StubProtocol.requests.count == 1)
+    }
+
+    @Test func urlCancelledThrowsCancellation() async throws {
+        let sut = client(.failure(URLError(.cancelled)))
+        await #expect(throws: CancellationError.self) {
+            _ = try await sut.complete(system: "s", user: "u")
+        }
+    }
+
+    @Test func taskCancellationThrowsCancellation() async throws {
+        let sut = client(.hang)
+        let task = Task { try await sut.complete(system: "s", user: "u") }
+        while StubProtocol.requests.isEmpty { await Task.yield() }
+        task.cancel()
+        await #expect(throws: CancellationError.self) {
+            _ = try await task.value
         }
     }
 }

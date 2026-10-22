@@ -69,14 +69,21 @@ public struct OpenAICompatibleClient: LLMClient {
         let data: Data
         let response: URLResponse
         do {
-            (data, response) = try await session.data(for: request)
+            (data, response) = try await session.data(for: request, delegate: RedirectRefuser.shared)
         } catch let error as URLError {
-            throw error.code == .timedOut ? LLMError.timeout : LLMError.unreachable(origin)
+            switch error.code {
+            case .cancelled: throw CancellationError()
+            case .timedOut: throw LLMError.timeout
+            default: throw LLMError.unreachable(origin)
+            }
         }
+        try Task.checkCancellation()
         guard let http = response as? HTTPURLResponse else { throw LLMError.emptyResponse }
         switch http.statusCode {
         case 200..<300:
             return data
+        case 300..<400:
+            throw LLMError.redirectRefused
         case 503:
             throw LLMError.modelNotReady
         default:
@@ -104,6 +111,19 @@ public struct OpenAICompatibleClient: LLMClient {
         }
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.count > 200 ? String(trimmed.prefix(200)) + "…" : trimmed
+    }
+}
+
+/// Refuses every redirect: a 307/308 would re-send the body (private notes) and possibly the
+/// Authorization header to a host that never passed EndpointPolicy or user confirmation.
+private final class RedirectRefuser: NSObject, URLSessionTaskDelegate, Sendable {
+    static let shared = RedirectRefuser()
+
+    func urlSession(
+        _ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
+        newRequest request: URLRequest
+    ) async -> URLRequest? {
+        nil
     }
 }
 

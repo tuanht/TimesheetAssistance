@@ -12,6 +12,8 @@ public enum LLMError: Error, Equatable, Sendable {
     case timeout
     case emptyResponse
     case modelNotReady
+    /// The server answered with a redirect; redirects are refused so notes never reach an unvetted host.
+    case redirectRefused
 
     public var userMessage: String {
         switch self {
@@ -30,6 +32,8 @@ public enum LLMError: Error, Equatable, Sendable {
             return "The model returned an empty response. Try again."
         case .modelNotReady:
             return "The model isn't loaded on the endpoint yet. Load it in your server, then try again."
+        case .redirectRefused:
+            return "The endpoint tried to redirect to another address. Use the final URL directly."
         }
     }
 }
