@@ -328,7 +328,7 @@ private struct LinesTable: View {
                     model.edit(line.id) { $0.ticket = LineEditing.ticket(from: text) }
                 }
             }
-            .width(min: 70, ideal: 90)
+            .width(min: 90, ideal: 110)
             TableColumn("Activity type") { row in
                 let line = row.line
                 ChoicePicker(label: "Activity type", list: settings.settings.activityTypes,

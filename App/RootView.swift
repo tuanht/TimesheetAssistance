@@ -3,8 +3,7 @@ import SwiftUI
 import TimesheetCore
 
 struct RootView: View {
-    /// The window's tabs. Also read by the ⌘1/⌘2 menu commands through the same "mainTab" key.
-    enum Section: String, CaseIterable, Identifiable {
+    private enum Section: String, CaseIterable, Identifiable {
         case log = "Log"
         case compile = "Compile"
         var id: String { rawValue }
@@ -43,11 +42,26 @@ struct RootView: View {
                 .labelsHidden()
             }
         }
+        .background { tabShortcuts }
         .frame(minWidth: 720, minHeight: 440)
         .onReceive(NotificationCenter.default.publisher(for: .NSCalendarDayChanged).receive(on: RunLoop.main)) { _ in
             followToday()
         }
         .onChange(of: scenePhase) { if scenePhase == .active { followToday() } }
+    }
+
+    /// ⌘1/⌘2 live in this window, not the menu bar: AppKit routes key equivalents to the key window, so
+    /// while a sheet, dialog or alert is up they never reach here and can't tear down a draft.
+    private var tabShortcuts: some View {
+        ZStack {
+            Button("Log") { selection = .log }
+                .keyboardShortcut("1", modifiers: .command)
+            Button("Compile") { selection = .compile }
+                .keyboardShortcut("2", modifiers: .command)
+        }
+        .opacity(0)
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 
     /// After midnight, a window left on the old today moves to the new one; a day the user picked stays.

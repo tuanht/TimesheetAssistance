@@ -11,8 +11,6 @@ struct TimesheetAssistantApp: App {
     @StateObject private var settings = SettingsSession.open()
     /// One model manager, so a download keeps running when the Settings window closes.
     @StateObject private var models = MLXModelManager(directory: Self.modelsDirectory())
-    /// The main window's tab, for the ⌘1/⌘2 menu commands.
-    @AppStorage("mainTab") private var mainTab: RootView.Section = .log
 
     var body: some Scene {
         WindowGroup {
@@ -42,14 +40,6 @@ struct TimesheetAssistantApp: App {
         .commands {
             // ⌘N belongs to "New Entry" in the daily log, not to a second window.
             CommandGroup(replacing: .newItem) {}
-            // Writes the same key RootView reads, so the shortcuts work whichever tab is showing.
-            CommandGroup(before: .sidebar) {
-                Button("Log") { mainTab = .log }
-                    .keyboardShortcut("1", modifiers: .command)
-                Button("Compile") { mainTab = .compile }
-                    .keyboardShortcut("2", modifiers: .command)
-                Divider()
-            }
         }
 
         Settings {
