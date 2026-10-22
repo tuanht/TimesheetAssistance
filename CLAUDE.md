@@ -23,6 +23,9 @@ xcodegen generate && xcodebuild -project TimesheetAssistant.xcodeproj -scheme Ti
 
 # Re-render the app icon after editing Design/AppIcon.svg
 swift scripts/render-icon.swift
+
+# Release DMG (ad-hoc signed unless SIGN_IDENTITY is set) -> build/TimesheetAssistant-<version>.dmg
+./scripts/build-dmg.sh
 ```
 
 - **Metal Toolchain.** Building needs it: `xcodebuild -downloadComponent MetalToolchain`.

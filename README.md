@@ -55,6 +55,16 @@ xcodebuild -project TimesheetAssistant.xcodeproj -scheme TimesheetAssistant -des
 
 You can also open `TimesheetAssistant.xcodeproj` in Xcode and run it. The project file is generated, so it is not committed.
 
+### DMG
+
+```bash
+./scripts/build-dmg.sh
+```
+
+This builds a Release app and writes `build/TimesheetAssistant-<version>.dmg`. The app is signed ad-hoc unless you set `SIGN_IDENTITY` (for example `SIGN_IDENTITY="Developer ID Application: …"`). The script fails if any model weights end up inside the app.
+
+An ad-hoc signed app isn't notarized. On first launch, right-click the app and choose **Open**, or run `xattr -dr com.apple.quarantine "/Applications/TimesheetAssistant.app"`.
+
 ## Tests
 
 ```bash
