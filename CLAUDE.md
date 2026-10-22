@@ -39,7 +39,7 @@ swift scripts/render-icon.swift
 - **`Packages/TimesheetCore`** holds all logic, with no UI. One folder per job (`Settings/`, `Output/`, `Schedule/`, `Validate/`, `Compile/`, `LLM/`, `Catalog/`, `Persistence/`, `Review/`, `Period/`).
 - **`Packages/LocalModels`** wraps `mlx-swift-lm` (pinned to exact 3.32.3):
   - `MLXModelManager` handles download, delete and `isDownloaded`, and keeps at most one model loaded.
-  - `MLXClient` conforms to `LLMClient`.
+  - `MLXClient` conforms to `LLMClient`. `GuidedJSON` builds the grammar constraint.
   - `HubDownloader` is our own minimal Hugging Face downloader. It stages each download and moves it into place only when every file has arrived.
 - **`Packages/Integrations`** holds the read-only MCP client (`MCPClient`, Streamable HTTP) for Jira and GitHub context. It depends on TimesheetCore only.
 - **`App/`** is a thin SwiftUI layer: `DailyLog/`, `Compile/`, `Settings/`, `Integrations/` (`ContextCoordinator`, Keychain store, sign-in presenter) and `Shared/` (`ModelGate`, `LLMClientFactory`, shared views).
@@ -49,7 +49,7 @@ swift scripts/render-icon.swift
 ### Compile pipeline
 
 1. **Prompt.** `PromptBuilder` builds the prompt. Entries get short keys (`e1`, `e2`, …) and their text is wrapped in `<entry>` delimiters. An entry with a fetched ticket/PR summary gets a neutralised `context:` section.
-2. **Model.** Every model call goes through `ModelGate`, which runs one at a time and is shared with background context jobs. The LLM returns JSON: per entry, a relative effort in `minutes`, any stated time, a description, a ticket, an activity type and a classification.
+2. **Model.** Every model call goes through `ModelGate`, which runs one at a time and is shared with background context jobs. The LLM returns JSON: per entry, a relative effort in `minutes`, any stated time, a description, a ticket, an activity type and a classification. With the on-device model, `MLXClient` constrains decoding to `ResponseSchema` (xgrammar via `MLXGuidedGeneration`), so the reply is always schema-valid JSON; the endpoint path is unconstrained.
 3. **Parse.** `ResponseParser` strips `<think>` blocks and code fences, then decodes leniently. A missing or null field becomes empty so the validator can flag it; one bad item doesn't fail the whole reply.
 4. **Schedule.** `Scheduler`, not the model, places entries on the clock:
    - Fixed meeting times keep their slot, and hints get their exact minutes.

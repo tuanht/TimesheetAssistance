@@ -110,7 +110,7 @@ Why: writing the daily timesheet by hand from scattered notes is tedious. The ra
 ### Compile pipeline
 1. Gather the day's entries.
 2. Build a prompt: template fields, allowed activity types and classifications, working window, entries.
-3. Ask the model for structured JSON, not free text. Exactly one item per entry. The model gives each entry an effort estimate, any time the entry text states, description, ticket, activity type and classification. Deterministic code then lays the entries onto the clock (user-approved 2026-10-22: small models are unreliable at schedule arithmetic). An entry that crosses lunch is split into two lines for the same entry (user-approved 2026-10-22).
+3. Ask the model for structured JSON, not free text. Exactly one item per entry. The model gives each entry an effort estimate, any time the entry text states, description, ticket, activity type and classification. With the on-device model, `MLXClient` constrains decoding to `ResponseSchema` (xgrammar via `MLXGuidedGeneration`), so the reply is always schema-valid JSON; the endpoint path is unconstrained. Deterministic code then lays the entries onto the clock (user-approved 2026-10-22: small models are unreliable at schedule arithmetic). An entry that crosses lunch is split into two lines for the same entry (user-approved 2026-10-22).
 4. Parse and validate (one line per entry, times inside window, no overlaps, values in allowed lists, ticket format). Repair what can be repaired in code (rounding, sorting); flag the rest.
 5. Render to plain text with the template.
 6. Show an editable table; the plain-text preview updates live; "Copy day" copies it.
