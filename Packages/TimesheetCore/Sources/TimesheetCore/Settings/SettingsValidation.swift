@@ -114,6 +114,10 @@ public enum SettingsValidation {
         guard let host = url.host(percentEncoded: false), !host.isEmpty else {
             return .failure(ValidationMessage("The URL needs a host."))
         }
+        // The base URL is stored in plain text in settings.json; credentials belong in the Keychain.
+        if url.user(percentEncoded: false) != nil || url.password(percentEncoded: false) != nil {
+            return .failure(ValidationMessage("Don't put credentials in the URL. Use the API key field."))
+        }
         if scheme == "http", !EndpointPolicy.isLocal(url) {
             return .failure(ValidationMessage("Remote endpoints must use https."))
         }
@@ -130,6 +134,16 @@ public enum SettingsValidation {
         if EndpointPolicy.isLocal(url) { return false }
         guard case .endpoint(let config) = saved, config.remoteConfirmed else { return true }
         return config.baseURL.host(percentEncoded: false)?.lowercased() != url.host(percentEncoded: false)?.lowercased()
+    }
+
+    /// The API key a connection test may send. The stored Keychain key belongs to the saved
+    /// endpoint's host, so it goes only to that host; a key the user typed goes wherever they test.
+    public static func testConnectionKey(field: String, storedKey: String, url: URL, saved: ModelSelection) -> String? {
+        if field.isEmpty { return nil }
+        if field != storedKey { return field }
+        guard case .endpoint(let config) = saved else { return nil }
+        let sameHost = config.baseURL.host(percentEncoded: false)?.lowercased() == url.host(percentEncoded: false)?.lowercased()
+        return sameHost ? field : nil
     }
 
     // MARK: Helpers

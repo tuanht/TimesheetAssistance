@@ -51,7 +51,7 @@ struct ModelsTab: View {
                 .pickerStyle(.segmented)
             }
             switch source {
-            case .local: localSection
+            case .local: LocalModelsSection(tier: tier)
             case .endpoint: endpointSections
             }
         }
@@ -60,6 +60,8 @@ struct ModelsTab: View {
         .onDisappear { cancelTest() }
         .onChange(of: [baseURL, apiKey]) {
             cancelTest()
+            // The ids belong to the endpoint they came from.
+            offeredModels = []
             keychainError = nil
         }
         .onChange(of: model) {
@@ -76,22 +78,6 @@ struct ModelsTab: View {
             Button("Cancel", role: .cancel) { pendingRemote = nil }
         } message: { _ in
             Text("This endpoint is not on this Mac or your local network. Your entries will be sent to it when you compile.")
-        }
-    }
-
-    // MARK: On this Mac
-
-    private var localSection: some View {
-        Section {
-            ForEach(ModelCatalog.available(for: tier)) { item in
-                LabeledContent(item.displayName, value: Self.sizeText(item.approxGB))
-            }
-        } header: {
-            Text("Models for this Mac")
-        } footer: {
-            Text("Downloading models to this Mac isn’t available yet.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
         }
     }
 
@@ -258,7 +244,9 @@ struct ModelsTab: View {
         cancelTest()
         let client = OpenAICompatibleClient(
             config: EndpointConfig(baseURL: url, model: trimmedModel, remoteConfirmed: false),
-            apiKey: apiKey, timeout: 15)
+            apiKey: SettingsValidation.testConnectionKey(
+                field: apiKey, storedKey: savedKey, url: url, saved: store.settings.model),
+            timeout: 15)
         testState = .testing
         testTask = Task {
             let outcome: TestState
@@ -292,9 +280,5 @@ struct ModelsTab: View {
         case .gb16: "16 GB tier"
         case .gb32: "32 GB tier"
         }
-    }
-
-    private static func sizeText(_ gb: Double) -> String {
-        "\(gb.formatted(.number.precision(.fractionLength(0...1)))) GB"
     }
 }

@@ -175,4 +175,38 @@ struct EndpointValidationTests {
         #expect(SettingsValidation.needsRemoteConfirmation(url, saved: otherHost))
         #expect(!SettingsValidation.needsRemoteConfirmation(url, saved: confirmed))
     }
+
+    @Test func rejectsCredentialsInURL() {
+        let message = "Don't put credentials in the URL. Use the API key field."
+        #expect(urlError("https://user:pass@api.example.com") == message)
+        #expect(urlError("https://user@api.example.com") == message)
+        #expect(urlError("http://:secret@localhost:1234") == message)
+    }
+
+    // MARK: Test connection key
+
+    private let saved = ModelSelection.endpoint(EndpointConfig(
+        baseURL: URL(string: "https://API.example.com")!, model: "m", remoteConfirmed: true))
+
+    @Test func sameHostSendsStoredKey() {
+        let url = URL(string: "https://api.example.com/v1")!
+        #expect(SettingsValidation.testConnectionKey(field: "stored", storedKey: "stored", url: url, saved: saved) == "stored")
+    }
+
+    @Test func differentHostWithUntouchedFieldSendsNoKey() {
+        let url = URL(string: "https://evil.example.net")!
+        #expect(SettingsValidation.testConnectionKey(field: "stored", storedKey: "stored", url: url, saved: saved) == nil)
+        #expect(SettingsValidation.testConnectionKey(field: "stored", storedKey: "stored", url: url, saved: .none) == nil)
+    }
+
+    @Test func typedKeyIsSentToAnyHost() {
+        let url = URL(string: "https://evil.example.net")!
+        #expect(SettingsValidation.testConnectionKey(field: "typed", storedKey: "stored", url: url, saved: saved) == "typed")
+        #expect(SettingsValidation.testConnectionKey(field: "typed", storedKey: "", url: url, saved: .none) == "typed")
+    }
+
+    @Test func emptyFieldSendsNoKey() {
+        let url = URL(string: "https://api.example.com")!
+        #expect(SettingsValidation.testConnectionKey(field: "", storedKey: "stored", url: url, saved: saved) == nil)
+    }
 }
