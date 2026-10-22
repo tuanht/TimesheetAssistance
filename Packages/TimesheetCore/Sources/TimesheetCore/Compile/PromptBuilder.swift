@@ -45,7 +45,7 @@ public enum PromptBuilder {
     You turn a developer's work entries for one day into timesheet items.
 
     Reply with a single JSON object and no other text, no markdown, no code fence:
-    {"items":[{"key":"e1","minutes":60,"fixedStart":null,"fixedEnd":null,"description":"Fixed login redirect loop","ticket":"ABC-123","activityType":"Development","classification":"Billable"}]}
+    {"items":[{"key":"e1","minutes":60,"fixedStart":null,"fixedEnd":null,"description":"<short past-tense phrase>","ticket":null,"activityType":"<one value from the allowed activityType list>","classification":"<one value from the allowed classification list>"}]}
 
     Rules:
     - Output exactly one item per entry key, in the same order. Never merge or skip entries.

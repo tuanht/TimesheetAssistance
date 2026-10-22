@@ -23,6 +23,31 @@ public struct ModelItem: Decodable, Equatable, Sendable {
         self.activityType = activityType
         self.classification = classification
     }
+
+    private enum CodingKeys: String, CodingKey {
+        case key, minutes, fixedStart, fixedEnd, description, ticket, activityType, classification
+    }
+
+    /// Small models often emit null or omit fields; keep the item and let validation flag the gaps.
+    /// Throws only when `key` is missing or empty, since the item cannot be matched to an entry.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let key = (try? c.decodeIfPresent(String.self, forKey: .key)) ?? nil
+        guard let key, !key.isEmpty else {
+            throw DecodingError.dataCorrupted(.init(codingPath: c.codingPath, debugDescription: "Item has no usable key"))
+        }
+        func string(_ k: CodingKeys) -> String? { (try? c.decodeIfPresent(String.self, forKey: k)) ?? nil }
+        self.key = key
+        minutes = ((try? c.decodeIfPresent(Int.self, forKey: .minutes)) ?? nil) ?? ModelItem.defaultMinutes
+        fixedStart = string(.fixedStart)
+        fixedEnd = string(.fixedEnd)
+        description = string(.description) ?? ""
+        ticket = string(.ticket)
+        activityType = string(.activityType) ?? ""
+        classification = string(.classification) ?? ""
+    }
+
+    static let defaultMinutes = 30
 }
 
 public enum ParseError: Error, Equatable {
@@ -33,6 +58,22 @@ public enum ParseError: Error, Equatable {
 public enum ResponseParser {
     private struct Envelope: Decodable {
         var items: [ModelItem]
+
+        private enum CodingKeys: String, CodingKey { case items }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            items = try container.decode([DroppableItem].self, forKey: .items).compactMap(\.item)
+        }
+    }
+
+    /// One malformed item (no key, not an object) is dropped instead of failing the whole response.
+    private struct DroppableItem: Decodable {
+        var item: ModelItem?
+
+        init(from decoder: Decoder) throws {
+            item = try? ModelItem(from: decoder)
+        }
     }
 
     public static func parse(_ text: String) throws -> [ModelItem] {

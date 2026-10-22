@@ -71,6 +71,15 @@ struct PromptBuilderTests {
         #expect(prompt.user.components(separatedBy: "<entry ").count == 2)
     }
 
+    @Test func noTicketLikeStringsBeyondEntries() throws {
+        let settings = AppSettings.default
+        let entries = [snapshot("Paired on XYZ-42 rollout", type: .ticket, ticket: "ABC-7"), snapshot("Standup")]
+        let prompt = PromptBuilder.build(entries: entries, day: day, settings: settings)
+        let pattern = try Regex(settings.template.ticketPattern)
+        let found = Set((prompt.system + "\n" + prompt.user).matches(of: pattern).map { String($0.output[0].substring ?? "") })
+        #expect(found == ["XYZ-42", "ABC-7"])
+    }
+
     @Test func systemStatesContract() {
         let prompt = PromptBuilder.build(entries: [snapshot("x")], day: day, settings: .default)
         for field in ["\"items\"", "key", "minutes", "fixedStart", "fixedEnd", "description",
