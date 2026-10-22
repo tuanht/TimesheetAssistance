@@ -20,6 +20,9 @@ struct SettingsView: View {
             ModelsTab()
                 .tabItem { Label("Models", systemImage: "cpu") }
                 .tag("models")
+            IntegrationsTab()
+                .tabItem { Label("Integrations", systemImage: "link") }
+                .tag("integrations")
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             VStack(alignment: .leading, spacing: 4) {
