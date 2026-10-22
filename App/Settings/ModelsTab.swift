@@ -49,6 +49,11 @@ struct ModelsTab: View {
                     Text("Custom endpoint").tag(Source.endpoint)
                 }
                 .pickerStyle(.segmented)
+                if source == .local, savedEndpoint != nil {
+                    Text("The custom endpoint stays in use until you choose Use on a model.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
             switch source {
             case .local: LocalModelsSection(tier: tier)
@@ -76,8 +81,8 @@ struct ModelsTab: View {
         ) { config in
             Button("Confirm") { apply(config) }
             Button("Cancel", role: .cancel) { pendingRemote = nil }
-        } message: { _ in
-            Text("This endpoint is not on this Mac or your local network. Your entries will be sent to it when you compile.")
+        } message: { config in
+            Text("This endpoint is not on this Mac or your local network. Your entries will be sent to it when you compile.\nHost: \(Self.hostText(config.baseURL))")
         }
     }
 
@@ -176,10 +181,7 @@ struct ModelsTab: View {
             set: { new in
                 source = new
                 cancelTest()
-                // Choosing "On this Mac" drops a saved endpoint; the form keeps its draft.
-                if new == .local, savedEndpoint != nil {
-                    session.update { $0.model = .none }
-                }
+                // Only changes what is shown; the selection changes on Use or Save.
             })
     }
 
@@ -270,6 +272,12 @@ struct ModelsTab: View {
     }
 
     // MARK: Formatting
+
+    /// Host and any explicit port, e.g. "api.example.com" or "10.0.0.5:8080".
+    private static func hostText(_ url: URL) -> String {
+        let host = url.host(percentEncoded: false) ?? url.absoluteString
+        return url.port.map { "\(host):\($0)" } ?? host
+    }
 
     private static func memoryText(_ bytes: UInt64) -> String {
         "\(bytes / (1 << 30)) GB memory"
