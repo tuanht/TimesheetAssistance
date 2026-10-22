@@ -2,10 +2,9 @@ import SwiftData
 import SwiftUI
 import TimesheetCore
 
-/// A saved entry whose new references would replace an edited summary, and those references.
+/// A saved entry whose new references would replace an edited summary.
 private struct PendingReplace {
     let entry: LogEntry
-    let refs: [String]
 }
 
 /// Sheet that creates a new entry on the picked day, or edits `entry` in place.
@@ -27,7 +26,7 @@ struct EntryEditor: View {
     /// The stored summary as last loaded, so only a change the user typed marks it edited.
     @State private var loadedSummary: String
     @State private var saveError: String?
-    /// The saved entry and refs awaiting "Replace" or "Keep" after a save.
+    /// The saved entry awaiting "Replace" or "Keep" after a save.
     @State private var pendingReplace: PendingReplace?
     @State private var confirmingReplace = false
     @State private var confirmingRefresh = false
@@ -185,10 +184,10 @@ struct EntryEditor: View {
         applyContextPolicy(to: saved)
     }
 
-    /// After the entry is saved: fetch, clear, ask, or record the refs so an older in-flight job is dropped.
-    /// The policy compares against the stored refs before they are overwritten.
+    /// After the entry is saved: fetch, clear or ask. Stored refs change only when a summary is applied,
+    /// so they always name what the summary was built from; an older in-flight job sees the new refs and is dropped.
     private func applyContextPolicy(to saved: LogEntry) {
-        let current = references(for: saved).canonical
+        let current = coordinator.detect(saved).canonical
         let action = ContextPolicy.onSave(
             current: current, stored: saved.contextRefs,
             hasSummary: Self.optional(saved.contextSummary ?? "") != nil, edited: saved.contextEdited)
@@ -198,41 +197,35 @@ struct EntryEditor: View {
         case .clear:
             coordinator.clear(saved)
         case .confirmReplace:
-            pendingReplace = PendingReplace(entry: saved, refs: current)
+            pendingReplace = PendingReplace(entry: saved)
             confirmingReplace = true
             return
         case .none:
-            keepRefs(current, on: saved)
+            break
         }
         dismiss()
     }
 
     private func finishReplace(_ pending: PendingReplace, replace: Bool) {
         pendingReplace = nil
-        if replace { coordinator.enqueue(pending.entry) } else { keepRefs(pending.refs, on: pending.entry) }
+        if replace { coordinator.enqueue(pending.entry) }
         dismiss()
-    }
-
-    /// Records `refs` as the summary's source. The entry itself is already saved, so a failure here
-    /// leaves the refs in memory for the next save.
-    private func keepRefs(_ refs: [String], on saved: LogEntry) {
-        guard saved.contextRefs != refs else { return }
-        saved.contextRefs = refs
-        try? context.save()
     }
 
     // MARK: - Refresh
 
     /// Refresh fetches the saved entry's references, which is what the coordinator reads.
     private var canRefresh: Bool {
-        guard let entry, !references(for: entry).references.isEmpty else { return false }
-        return IntegrationService.allCases.contains(where: coordinator.isConnected)
+        guard let entry, coordinator.isAnyConnected else { return false }
+        return !coordinator.detect(entry).references.isEmpty
     }
 
+    /// Confirms only when a non-blank summary the user edited (saved or typed here) would be replaced.
     private func requestRefresh() {
         guard let entry else { return }
-        let edited = (entry.contextEdited && Self.optional(entry.contextSummary ?? "") != nil) || summary != loadedSummary
-        switch ContextPolicy.onRefresh(current: references(for: entry).canonical, edited: edited) {
+        let edited = entry.contextEdited || summary != loadedSummary
+        let hasSummary = Self.optional(summary) != nil
+        switch ContextPolicy.onRefresh(current: coordinator.detect(entry).canonical, hasSummary: hasSummary, edited: edited) {
         case .fetch: startRefresh()
         case .confirmReplace: confirmingRefresh = true
         case .none, .clear: break
@@ -250,12 +243,6 @@ struct EntryEditor: View {
 
     private var liveReferences: DetectedReferences {
         ReferenceDetector.detect(ticketRef: Self.optional(ticketRef), text: text,
-                                 ticketPattern: store.settings.template.ticketPattern,
-                                 defaultRepo: store.settings.integrations.defaultRepo)
-    }
-
-    private func references(for entry: LogEntry) -> DetectedReferences {
-        ReferenceDetector.detect(ticketRef: entry.ticketRef, text: entry.text,
                                  ticketPattern: store.settings.template.ticketPattern,
                                  defaultRepo: store.settings.integrations.defaultRepo)
     }

@@ -5,12 +5,15 @@ import SwiftData
 import TimesheetCore
 
 /// Fetches each entry's referenced tickets and PRs and summarizes them with the compile model,
-/// one job at a time. Status lives in memory only; only the summary is saved.
+/// one job at a time. Status lives in memory only; only the summary and the refs it was built from are saved.
 @MainActor
 final class ContextCoordinator: ObservableObject {
     static let overflowMessage = "Only the first \(ReferenceDetector.maxReferences) references were fetched."
 
     @Published private(set) var status: [UUID: ContextStatus] = [:]
+    /// Services whose selected sign-in method has its secrets stored. Cached so views never read
+    /// the Keychain while rendering; recomputed by `reset(_:)`.
+    @Published private(set) var connected: Set<IntegrationService> = []
 
     /// For the Integrations tab: saving tokens, disconnecting and Jira sign-in.
     let tokens: any TokenStore
@@ -55,6 +58,7 @@ final class ContextCoordinator: ObservableObject {
         self.models = models
         self.tokens = tokens
         self.atlassian = AtlassianOAuth(store: tokens, presenter: WebAuthSignInPresenter())
+        connected = storedConnections()
     }
 
     private var integrations: IntegrationSettings { session.store.settings.integrations }
@@ -71,18 +75,19 @@ final class ContextCoordinator: ObservableObject {
         }.count
     }
 
-    /// Stores the detected refs on the entry and queues a fetch, unless the same job is already queued or running.
-    func enqueue(_ entry: LogEntry) {
-        guard let context = entry.modelContext else { return }
+    /// The entry's references under the current ticket pattern and default repo.
+    func detect(_ entry: LogEntry) -> DetectedReferences {
         let settings = session.store.settings
-        let detected = ReferenceDetector.detect(
+        return ReferenceDetector.detect(
             ticketRef: entry.ticketRef, text: entry.text,
             ticketPattern: settings.template.ticketPattern, defaultRepo: settings.integrations.defaultRepo)
-        if entry.contextRefs != detected.canonical {
-            entry.contextRefs = detected.canonical
-            // A failed save keeps the refs in memory; the next save or the job's own save persists them.
-            try? context.save()
-        }
+    }
+
+    /// Queues a fetch of the entry's current refs, unless the same job is already queued or running.
+    /// Nothing is written to the entry until the summary is applied.
+    func enqueue(_ entry: LogEntry) {
+        guard let context = entry.modelContext else { return }
+        let detected = detect(entry)
         let job = Job(id: entry.id, detected: detected, summary: entry.contextSummary,
                       edited: entry.contextEdited, context: context)
         if running?.repeats(job) == true || queue.contains(where: { $0.repeats(job) }) { return }
@@ -90,7 +95,7 @@ final class ContextCoordinator: ObservableObject {
 
         guard let first = detected.references.first(where: { isConnected($0.service) }) else {
             // Nothing to fetch. Not-connected refs are reported only when another service is connected.
-            if detected.references.isEmpty || !anyConnected {
+            if detected.references.isEmpty || !isAnyConnected {
                 if running?.id != job.id { status[job.id] = nil }
                 return
             }
@@ -113,8 +118,18 @@ final class ContextCoordinator: ObservableObject {
 
     // MARK: - Connections
 
-    /// True when the selected sign-in method has its secrets stored.
+    /// True when the selected sign-in method has its secrets stored. Reads the cache, not the Keychain.
     func isConnected(_ service: IntegrationService) -> Bool {
+        connected.contains(service)
+    }
+
+    var isAnyConnected: Bool { !connected.isEmpty }
+
+    private func storedConnections() -> Set<IntegrationService> {
+        Set(IntegrationService.allCases.filter(hasStoredSignIn))
+    }
+
+    private func hasStoredSignIn(_ service: IntegrationService) -> Bool {
         switch service {
         case .jira:
             switch integrations.jiraMethod {
@@ -138,14 +153,13 @@ final class ContextCoordinator: ObservableObject {
         return client
     }
 
-    /// Call after tokens change (save, sign-in, disconnect): drops the client and its MCP session,
-    /// and tells views to re-read `isConnected`.
+    /// Call after tokens or the sign-in method change (save, sign-in, disconnect, switch): drops the
+    /// client and its MCP session, and re-reads which services are connected.
     func reset(_ service: IntegrationService) {
         clients[service] = nil
+        connected = storedConnections()
         objectWillChange.send()
     }
-
-    private var anyConnected: Bool { IntegrationService.allCases.contains(where: isConnected) }
 
     private var jiraEmail: String { (integrations.jiraEmail ?? "").trimmingCharacters(in: .whitespacesAndNewlines) }
 
@@ -214,7 +228,7 @@ final class ContextCoordinator: ObservableObject {
     }
 
     private func run(_ job: Job) async {
-        guard anyConnected else { return finish(job, failures: []) }
+        guard isAnyConnected else { return finish(job, failures: []) }
         var failures: [String] = []
         func fail(_ message: String) { if !failures.contains(message) { failures.append(message) } }
 
@@ -241,7 +255,6 @@ final class ContextCoordinator: ObservableObject {
                 fail(Self.message(for: error, service: service))
             }
         }
-        if job.detected.overflowed { fail(Self.overflowMessage) }
         guard !sources.isEmpty else { return finish(job, failures: failures) }
 
         guard update(job, .summarizing) else { return }
@@ -269,7 +282,8 @@ final class ContextCoordinator: ObservableObject {
         return try SummaryParser.clean(reply)
     }
 
-    /// Writes the summary unless the entry was deleted, its refs changed or the user edited it meanwhile.
+    /// Writes the summary and the refs it was built from, unless the entry was deleted, its refs changed
+    /// or the user edited it meanwhile.
     private func apply(_ summary: String, job: Job, failures: inout [String]) {
         guard let entry = Self.entry(job.id, in: job.context) else {
             failures = []
@@ -277,21 +291,22 @@ final class ContextCoordinator: ObservableObject {
         }
         let editedSinceStart = entry.contextSummary != job.summary || entry.contextEdited != job.edited
         guard ContextPolicy.shouldApply(
-            jobRefs: job.detected.canonical, currentRefs: entry.contextRefs, editedSinceStart: editedSinceStart)
+            jobRefs: job.detected.canonical, currentRefs: detect(entry).canonical, editedSinceStart: editedSinceStart)
         else {
             // A stale result: its failures don't describe the entry any more.
             failures = []
             return
         }
-        let previous = (entry.contextSummary, entry.contextEdited, entry.contextUpdatedAt)
+        let previous = (entry.contextSummary, entry.contextRefs, entry.contextEdited, entry.contextUpdatedAt)
         entry.contextSummary = summary
+        entry.contextRefs = job.detected.canonical
         entry.contextEdited = false
         entry.contextUpdatedAt = Date()
         do {
             try job.context.save()
         } catch {
             // Undo only this job's change; a rollback would also discard unrelated unsaved edits.
-            (entry.contextSummary, entry.contextEdited, entry.contextUpdatedAt) = previous
+            (entry.contextSummary, entry.contextRefs, entry.contextEdited, entry.contextUpdatedAt) = previous
             failures.append("Couldn’t save the summary. Try again.")
         }
     }
@@ -302,10 +317,11 @@ final class ContextCoordinator: ObservableObject {
 
     /// Writes a running job's status. Returns false when the job is stale: a newer job for the entry
     /// is queued (it owns the status), or the entry was deleted or its refs changed (status removed).
+    /// Refs are re-detected from the entry's ticket and text, since stored refs change only on apply.
     @discardableResult
     private func update(_ job: Job, _ new: ContextStatus?) -> Bool {
         guard !queue.contains(where: { $0.id == job.id }) else { return false }
-        guard let entry = Self.entry(job.id, in: job.context), entry.contextRefs == job.detected.canonical else {
+        guard let entry = Self.entry(job.id, in: job.context), detect(entry).canonical == job.detected.canonical else {
             status[job.id] = nil
             return false
         }

@@ -41,7 +41,6 @@ private struct EntryList: View {
     let range: DayRange
 
     @Environment(\.modelContext) private var context
-    @EnvironmentObject private var coordinator: ContextCoordinator
     @Query private var entries: [LogEntry]
     @State private var selection: LogEntry.ID?
     @State private var editor: EditorTarget?
@@ -58,15 +57,13 @@ private struct EntryList: View {
     }
 
     var body: some View {
-        // Read once per render: each check reads the Keychain.
-        let connected = IntegrationService.allCases.contains(where: coordinator.isConnected)
         List(selection: $selection) {
             if kind == .day {
-                ForEach(entries) { EntryRow(entry: $0, isAnyConnected: connected) }
+                ForEach(entries) { EntryRow(entry: $0) }
             } else {
                 ForEach(daysWithEntries, id: \.key) { day in
                     Section(day.date.formatted(.dateTime.weekday(.wide).month(.abbreviated).day())) {
-                        ForEach(day.entries) { EntryRow(entry: $0, isAnyConnected: connected) }
+                        ForEach(day.entries) { EntryRow(entry: $0) }
                     }
                 }
             }
@@ -186,7 +183,6 @@ private struct EntryList: View {
 
 private struct EntryRow: View {
     let entry: LogEntry
-    let isAnyConnected: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
@@ -206,7 +202,7 @@ private struct EntryRow: View {
             }
             .accessibilityElement(children: .combine)
             // Outside the combined element so Retry and Fetch details stay separate buttons.
-            EntryContextView(entry: entry, isAnyConnected: isAnyConnected)
+            EntryContextView(entry: entry)
         }
         .padding(.vertical, 2)
     }

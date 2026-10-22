@@ -23,6 +23,8 @@ struct IntegrationServiceSection: View {
     @State private var email = ""
     @State private var clientId = ""
     @State private var loaded = false
+    /// The service's stored secrets, read from the Keychain on appear and after each change, never in `body`.
+    @State private var savedKeys: Set<TokenKey> = []
 
     @State private var status = Status.idle
     @State private var task: Task<Void, Never>?
@@ -36,9 +38,7 @@ struct IntegrationServiceSection: View {
         service == .jira ? settings.jiraMethod : settings.githubMethod
     }
 
-    private var hasSavedSignIn: Bool {
-        TokenKey.allCases.contains { $0.service == service && context.tokens.get($0) != nil }
-    }
+    private var hasSavedSignIn: Bool { !savedKeys.isEmpty }
 
     private var isBusy: Bool { status == .working }
 
@@ -116,6 +116,11 @@ struct IntegrationServiceSection: View {
     private var appSignInRows: some View {
         if service == .github {
             TextField("Client ID", text: $clientId, prompt: Text("Your organization's GitHub App"))
+        }
+        if service == .github {
+            Text("Tokens expire after 8 hours unless your admin turns off token expiration for the GitHub App. A personal token avoids this.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
         if let deviceCode {
             HStack {
@@ -206,13 +211,14 @@ struct IntegrationServiceSection: View {
             set: { id in
                 guard !id.isEmpty else { return }
                 session.update { $0.integrations.jiraSiteId = id }
-                context.reset(.jira)
+                resetConnection()
             })
     }
 
     // MARK: Actions
 
     private func load() {
+        refreshSavedKeys()
         guard !loaded else { return }
         loaded = true
         email = settings.jiraEmail ?? ""
@@ -220,7 +226,17 @@ struct IntegrationServiceSection: View {
     }
 
     private func hasToken(_ key: TokenKey) -> Bool {
-        !(context.tokens.get(key) ?? "").isEmpty
+        savedKeys.contains(key)
+    }
+
+    private func refreshSavedKeys() {
+        savedKeys = Set(TokenKey.allCases.filter { $0.service == service && !(context.tokens.get($0) ?? "").isEmpty })
+    }
+
+    /// After secrets, the method or the site change: drops the service's client and re-reads stored secrets.
+    private func resetConnection() {
+        context.reset(service)
+        refreshSavedKeys()
     }
 
     private func saveToken() {
@@ -240,7 +256,7 @@ struct IntegrationServiceSection: View {
             }
         }
         token = ""
-        context.reset(service)
+        resetConnection()
     }
 
     private func switchMethod(to new: AuthMethod) {
@@ -249,12 +265,12 @@ struct IntegrationServiceSection: View {
         session.update {
             if service == .jira { $0.integrations.jiraMethod = new } else { $0.integrations.githubMethod = new }
         }
-        context.reset(service)
+        resetConnection()
     }
 
     private func disconnect() {
         forget()
-        context.reset(service)
+        resetConnection()
     }
 
     /// Deletes every saved secret of the service, and the Jira site, which belongs to the account.
@@ -275,7 +291,7 @@ struct IntegrationServiceSection: View {
         case .jira:
             run {
                 try await context.atlassian.signIn()
-                context.reset(.jira)
+                resetConnection()
                 return try await testJira()
             }
         case .github:
@@ -296,7 +312,7 @@ struct IntegrationServiceSection: View {
                     throw Failure.keychain
                 }
                 deviceCode = nil
-                context.reset(.github)
+                resetConnection()
                 return try await testGitHub()
             }
         }
@@ -340,20 +356,26 @@ struct IntegrationServiceSection: View {
     // MARK: Tests
 
     private func testGitHub() async throws -> String {
-        let me = try await context.client(for: .github).callTool("get_me", arguments: [:])
+        let me = try await GitHubFetcher(tools: context.client(for: .github)).me()
         return Self.accountName(me, keys: ["login", "name"]) ?? "Connected"
     }
 
     /// Reads the account, then its sites: one is saved at once; several are offered in the picker.
     private func testJira() async throws -> String {
-        let client = context.client(for: .jira)
-        let me = try await client.callTool("atlassianUserInfo", arguments: [:])
-        let found = try await JiraFetcher(tools: client, siteId: "").sites()
+        let fetcher = JiraFetcher(tools: context.client(for: .jira), siteId: "")
+        let me: JSONValue
+        let found: [JiraSite]
+        do {
+            me = try await fetcher.userInfo()
+            found = try await fetcher.sites()
+        } catch ContextError.signInAgain(.jira) where settings.jiraMethod == .personalToken {
+            throw Failure.tokenRefused
+        }
         try Task.checkCancellation()
         sites = found
         if found.count == 1, let site = found.first, site.id != settings.jiraSiteId {
             session.update { $0.integrations.jiraSiteId = site.id }
-            context.reset(.jira)
+            resetConnection()
         }
         if found.isEmpty { throw Failure.noSites }
         return Self.accountName(me, keys: ["name", "email"]) ?? "Connected"
@@ -361,12 +383,13 @@ struct IntegrationServiceSection: View {
 
     /// Failures with their own wording; anything else gets a generic message.
     private enum Failure: Error {
-        case keychain, noSites
+        case keychain, noSites, tokenRefused
 
         var message: String {
             switch self {
             case .keychain: "Couldn’t save the sign-in to the Keychain."
             case .noSites: "This account can’t reach any Jira site."
+            case .tokenRefused: "Jira refused this email and token. Check them, and that your admin allows API-token access."
             }
         }
     }

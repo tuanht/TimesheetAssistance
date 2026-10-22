@@ -5,11 +5,8 @@ import TimesheetCore
 /// Status and buttons appear only when a service is connected; a saved summary always shows.
 struct EntryContextView: View {
     let entry: LogEntry
-    /// Whether any integration is connected, read once by the list rather than per row.
-    let isAnyConnected: Bool
 
     @EnvironmentObject private var coordinator: ContextCoordinator
-    @EnvironmentObject private var store: SettingsStore
     @State private var confirmingRetry = false
 
     var body: some View {
@@ -19,7 +16,7 @@ struct EntryContextView: View {
                 .foregroundStyle(.secondary)
                 .lineLimit(3)
         }
-        if isAnyConnected {
+        if coordinator.isAnyConnected {
             if let status = coordinator.status[entry.id] {
                 statusLine(status)
             } else if summary == nil && !detected.references.isEmpty {
@@ -48,10 +45,10 @@ struct EntryContextView: View {
         .font(.callout)
     }
 
-    /// Retry asks first when the summary was edited after the failed job, like Refresh does.
+    /// Retry asks first when a non-blank summary was edited after the failed job, like Refresh does.
     private func retry() {
-        let edited = entry.contextEdited && summary != nil
-        switch ContextPolicy.onRefresh(current: detected.canonical, edited: edited) {
+        switch ContextPolicy.onRefresh(
+            current: detected.canonical, hasSummary: summary != nil, edited: entry.contextEdited) {
         case .confirmReplace: confirmingRetry = true
         case .fetch: coordinator.enqueue(entry)
         case .none, .clear: break
@@ -64,9 +61,5 @@ struct EntryContextView: View {
         return text
     }
 
-    private var detected: DetectedReferences {
-        ReferenceDetector.detect(ticketRef: entry.ticketRef, text: entry.text,
-                                 ticketPattern: store.settings.template.ticketPattern,
-                                 defaultRepo: store.settings.integrations.defaultRepo)
-    }
+    private var detected: DetectedReferences { coordinator.detect(entry) }
 }
