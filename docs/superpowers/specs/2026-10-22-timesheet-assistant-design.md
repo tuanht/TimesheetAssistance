@@ -121,7 +121,7 @@ Why: writing the daily timesheet by hand from scattered notes is tedious. The ra
 ### Screens
 1. **Daily log** — date picker, list of entries, add/edit/delete entry (type, optional ticket ref, free text).
 2. **Compile** — pick a day, run, edit table, live plain-text preview, copy.
-3. **Settings** — tabs: Template, Lists (activity/classification), Working hours, Models.
+3. **Settings** — tabs: Template, Lists (activity/classification), Working hours, Models, Integrations, Developer (override the compile system prompt).
    - **Models tab** (user decision): models are downloaded directly from Settings while the app runs. No weights are bundled with the app. Shows RAM, catalog for the tier, download with progress, delete, select active. Custom endpoint config with "Test connection" lives here too.
    - Until a model is downloaded or an endpoint is configured, Compile is disabled with a link to the Models tab.
 

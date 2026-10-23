@@ -29,7 +29,7 @@ struct DeveloperTab: View {
                     .disabled(saved == nil && text == PromptBuilder.system)
                 }
             } footer: {
-                Text("Replaces the built-in instructions sent with every compile. Entries, lists and the reply schema are still added automatically.")
+                Text("Replaces the built-in instructions sent with every compile. Entries, lists and the reply schema are still added automatically. Keep the JSON reply instructions: some endpoints ignore the schema.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
