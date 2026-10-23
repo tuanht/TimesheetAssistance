@@ -44,7 +44,7 @@ ln -s /Applications "$STAGE/Applications"
 
 DMG="$BUILD_DIR/$APP_NAME-$VERSION.dmg"
 rm -f "$DMG"
-hdiutil create -volname "Timesheet Assistant" -srcfolder "$STAGE" -ov -format UDZO "$DMG"
+diskutil image create from --volumeName "Timesheet Assistant" --format UDZO "$STAGE" "$DMG"
 rm -rf "$STAGE"
 
 echo "Built $DMG"
