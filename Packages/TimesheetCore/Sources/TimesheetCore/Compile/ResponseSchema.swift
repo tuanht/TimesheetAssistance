@@ -30,7 +30,7 @@ public enum ResponseSchema {
     }
 
     private static func item(key: String, timed: Bool, activityTypes: [String], classifications: [String]) -> String {
-        let fixedTime = timed ? nullableString : null
+        let fixedTime = timed ? nullableString : alwaysNull
         let schemas: [String: Any] = [
             "key": ["const": key],
             "minutes": ["type": "integer", "minimum": 1] as [String: Any],
@@ -50,7 +50,7 @@ public enum ResponseSchema {
     }
 
     private static var nullableString: [String: Any] { ["anyOf": [["type": "string"], ["type": "null"]]] }
-    private static var null: [String: Any] { ["type": "null"] }
+    private static var alwaysNull: [String: Any] { ["type": "null"] }
 
     /// Exact strings, since the validator compares them verbatim; an empty list cannot be an
     /// empty enum (nothing would match), so it falls back to any string for the validator to flag.

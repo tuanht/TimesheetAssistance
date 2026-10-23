@@ -46,7 +46,8 @@ public enum PromptBuilder {
         \(blocks.joined(separator: "\n\n"))
         """
         let schema = ResponseSchema.json(
-            keys: keys, timedKeys: timedKeys, activityTypes: settings.activityTypes, classifications: settings.classifications)
+            keys: keys, timedKeys: timedKeys,
+            activityTypes: settings.activityTypes, classifications: settings.classifications)
         return Prompt(system: system, user: user, keyMap: keyMap, jsonSchema: schema)
     }
 
