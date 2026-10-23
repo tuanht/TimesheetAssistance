@@ -84,7 +84,10 @@ private struct LineFields {
             return
         }
         estimatedMinutes = item.minutes
+        // Keep a fixed slot only if the text states its start; models invent times for
+        // entries that give only a duration. The end may come from a stated length, so it is trusted.
         if let start = item.fixedStart.flatMap(ClockTime.init),
+           ClockMention.times(in: entry.text).contains(start),
            let end = item.fixedEnd.flatMap(ClockTime.init), end > start {
             fixed = (start, end)
         } else {

@@ -240,7 +240,7 @@ struct CompilerTests {
     }
 
     @Test func halfFixedTimeIsNotFixed() async throws {
-        let entries = [entry("Work"), entry("Meeting", type: .meeting)]
+        let entries = [entry("Work"), entry("Meeting at 14:00", type: .meeting)]
         let (result, _) = try await compile(entries, response(
             item("e1"), item("e2", fixedStart: "14:00", fixedEnd: "25:99")))
 
@@ -250,11 +250,49 @@ struct CompilerTests {
     }
 
     @Test func invertedFixedTimeIsNotFixed() async throws {
-        let entries = [entry("Meeting", type: .meeting)]
+        let entries = [entry("Meeting at 15:00", type: .meeting)]
         let (result, _) = try await compile(entries, response(
             item("e1", fixedStart: "15:00", fixedEnd: "14:00")))
         #expect(result.issues.isEmpty)
         #expect(result.lines.first?.start == ClockTime(9, 0))
+    }
+
+    // The model invented 08:00–16:00; the text states no clock time, so the entry is
+    // scheduled freely and split around lunch instead of sitting across it.
+    @Test func inventedFixedTimeDropped() async throws {
+        let entries = [entry("Worked 7h on ABC-1")]
+        let (result, _) = try await compile(entries, response(
+            item("e1", minutes: 420, fixedStart: "08:00", fixedEnd: "16:00")))
+
+        let hours = settings.workingHours
+        #expect(result.lines.count >= 2)
+        #expect(result.lines.contains { $0.end == hours.lunchStart })
+        #expect(result.lines.contains { $0.start == hours.lunchEnd })
+        #expect(!result.issues.contains { $0.kind == .inLunch })
+    }
+
+    @Test func statedFixedTimeKept() async throws {
+        let entries = [entry("Work"), entry("Standup 9:30", type: .meeting)]
+        let (result, _) = try await compile(entries, response(
+            item("e1"), item("e2", minutes: 15, fixedStart: "09:30", fixedEnd: "09:45", activity: "Meeting")))
+
+        let meeting = result.lines.filter { $0.entryId == entries[1].id }
+        #expect(meeting.count == 1)
+        #expect(meeting.first?.start == ClockTime(9, 30))
+        #expect(meeting.first?.end == ClockTime(9, 45))
+    }
+
+    // A real stated meeting across lunch keeps its slot and is flagged, not fixed silently.
+    @Test func statedFixedTimeAcrossLunchFlagged() async throws {
+        let entries = [entry("Workshop 11:00-14:00", type: .meeting)]
+        let (result, _) = try await compile(entries, response(
+            item("e1", minutes: 180, fixedStart: "11:00", fixedEnd: "14:00", activity: "Meeting")))
+
+        let workshop = result.lines.filter { $0.entryId == entries[0].id }
+        #expect(workshop.count == 1)
+        #expect(workshop.first?.start == ClockTime(11, 0))
+        #expect(workshop.first?.end == ClockTime(14, 0))
+        #expect(result.issues.contains { $0.entryId == entries[0].id && $0.kind == .inLunch })
     }
 
     @Test func durationHintUsed() async throws {
