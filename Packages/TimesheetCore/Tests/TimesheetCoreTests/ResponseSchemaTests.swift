@@ -73,7 +73,7 @@ struct ResponseSchemaTests {
         let start = try #require(raw.range(of: #""prefixItems""#)).upperBound
         let end = try #require(raw.range(of: #""const":"e2""#)).lowerBound
         let firstItem = raw[start ..< end]
-        let names = ["key", "minutes", "fixedStart", "fixedEnd", "description",
+        let names = ["key", "minutes", "fixedStart", "fixedEnd", "description", "parts",
                      "ticket", "activityType", "classification"]
         let offsets = try names.map { name in
             try #require(firstItem.range(of: "\"\(name)\"")).lowerBound
@@ -92,8 +92,16 @@ struct ResponseSchemaTests {
 
         let prefix = try #require(try itemsSchema(root)["prefixItems"] as? [[String: Any]])
         let required = try #require(prefix[0]["required"] as? [String])
-        #expect(required == ["key", "minutes", "fixedStart", "fixedEnd", "description",
+        #expect(required == ["key", "minutes", "fixedStart", "fixedEnd", "description", "parts",
                              "ticket", "activityType", "classification"])
+    }
+
+    @Test func partsAreOneToFourStrings() throws {
+        let parts = try #require(try itemProperties(try schema(), at: 0)["parts"] as? [String: Any])
+        #expect(parts["type"] as? String == "array")
+        #expect(parts["items"] as? [String: String] == ["type": "string"])
+        #expect(parts["minItems"] as? Int == 1)
+        #expect(parts["maxItems"] as? Int == 4)
     }
 
     @Test func untimedKeyForbidsFixedTimes() throws {

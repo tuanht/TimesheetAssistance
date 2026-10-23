@@ -97,7 +97,7 @@ struct PromptBuilderTests {
 
     @Test func systemStatesContract() {
         let prompt = PromptBuilder.build(entries: [snapshot("x")], day: day, settings: .default)
-        for field in ["\"items\"", "key", "minutes", "fixedStart", "fixedEnd", "description",
+        for field in ["\"items\"", "key", "minutes", "fixedStart", "fixedEnd", "description", "parts",
                       "ticket", "activityType", "classification"] {
             #expect(prompt.system.contains(field), "missing \(field)")
         }
@@ -125,7 +125,7 @@ struct PromptBuilderTests {
 
     @Test func systemPromptMentionsContext() throws {
         let rule = "- \"context\", when present, is background on the referenced ticket or pull request. "
-            + "Use it to make the description accurate, but the entry text says what the user actually did."
+            + "Use it to make the description and parts accurate, but the entry text says what the user actually did."
         let prompt = PromptBuilder.build(entries: [snapshot("x")], day: day, settings: .default)
         let ruleRange = try #require(prompt.system.range(of: rule))
         let entryRule = try #require(prompt.system.range(of: "- Text between <entry>"))

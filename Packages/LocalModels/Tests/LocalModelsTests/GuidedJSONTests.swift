@@ -38,7 +38,7 @@ struct GuidedJSONTests {
     private func item(
         _ key: String, activityType: String = "Development", ticket: String = "null", fixedStart: String = "null"
     ) -> String {
-        #"{"key":"\#(key)","minutes":30,"fixedStart":\#(fixedStart),"fixedEnd":null,"description":"Work","#
+        #"{"key":"\#(key)","minutes":30,"fixedStart":\#(fixedStart),"fixedEnd":null,"description":"Work","parts":["Work"],"#
             + #""ticket":\#(ticket),"activityType":"\#(activityType)","classification":"Billable"}"#
     }
 

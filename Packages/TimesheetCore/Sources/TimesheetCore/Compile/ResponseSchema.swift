@@ -3,7 +3,7 @@ import Foundation
 /// JSON Schema for the compile reply, so constrained decoding can force one item per entry key.
 public enum ResponseSchema {
     /// Prompt order. Constrained decoders keep property order, so `key` comes first and anchors the item.
-    static let itemFields = ["key", "minutes", "fixedStart", "fixedEnd", "description",
+    static let itemFields = ["key", "minutes", "fixedStart", "fixedEnd", "description", "parts",
                              "ticket", "activityType", "classification"]
 
     /// `timedKeys` are the entries whose text states a clock time; the rest may not have fixed times.
@@ -37,6 +37,7 @@ public enum ResponseSchema {
             "fixedStart": fixedTime,
             "fixedEnd": fixedTime,
             "description": ["type": "string"],
+            "parts": ["type": "array", "items": ["type": "string"], "minItems": 1, "maxItems": 4] as [String: Any],
             "ticket": nullableString,
             "activityType": oneOf(activityTypes),
             "classification": oneOf(classifications),

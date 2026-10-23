@@ -47,12 +47,13 @@ struct CompilerTests {
     }
 
     func item(_ key: String, minutes: Int = 60, fixedStart: String? = nil, fixedEnd: String? = nil,
-              description: String = "Did work", ticket: String? = nil,
+              description: String = "Did work", parts: [String] = [], ticket: String? = nil,
               activity: String = "Development", classification: String = "Billable") -> String {
         func json(_ s: String?) -> String { s.map { "\"\($0)\"" } ?? "null" }
+        let partsJSON = "[" + parts.map { json($0) }.joined(separator: ",") + "]"
         return """
         {"key":"\(key)","minutes":\(minutes),"fixedStart":\(json(fixedStart)),"fixedEnd":\(json(fixedEnd)),\
-        "description":\(json(description)),"ticket":\(json(ticket)),\
+        "description":\(json(description)),"parts":\(partsJSON),"ticket":\(json(ticket)),\
         "activityType":"\(activity)","classification":"\(classification)"}
         """
     }
@@ -269,6 +270,34 @@ struct CompilerTests {
         #expect(result.lines.contains { $0.end == hours.lunchStart })
         #expect(result.lines.contains { $0.start == hours.lunchEnd })
         #expect(!result.issues.contains { $0.kind == .inLunch })
+    }
+
+    @Test func splitEntryUsesPartsInOrder() async throws {
+        let entries = [entry("Whole day on ABC-1")]
+        let (result, _) = try await compile(entries, response(
+            item("e1", minutes: 480, description: "Worked on ABC-1",
+                 parts: [" Analysed the failing import ", "Fixed the parser and added tests"])))
+
+        #expect(result.lines.map(\.description) == ["Analysed the failing import", "Fixed the parser and added tests"])
+    }
+
+    @Test func extraSlotsRepeatTheLastPart() async throws {
+        let entries = [entry("Whole day on ABC-1"), entry("Sync 10:00", type: .meeting)]
+        let (result, _) = try await compile(entries, response(
+            item("e1", minutes: 480, parts: ["Analysed", "Fixed"]),
+            item("e2", minutes: 30, fixedStart: "10:00", fixedEnd: "10:30", parts: ["Synced"], activity: "Meeting")))
+
+        let day = result.lines.filter { $0.entryId == entries[0].id }.map(\.description)
+        #expect(day == ["Analysed", "Fixed", "Fixed"])
+    }
+
+    @Test func noPartsFallsBackToDescription() async throws {
+        let entries = [entry("Whole day on ABC-1")]
+        let (result, _) = try await compile(entries, response(
+            item("e1", minutes: 480, description: "Worked on ABC-1", parts: ["  "])))
+
+        #expect(result.lines.count == 2)
+        #expect(result.lines.allSatisfy { $0.description == "Worked on ABC-1" })
     }
 
     @Test func statedFixedTimeKept() async throws {

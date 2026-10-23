@@ -48,11 +48,15 @@ public struct Compiler: Sendable {
         }
         let fieldsById = Dictionary(uniqueKeysWithValues: zip(entries.map(\.id), fields))
 
+        // Slots come back in clock order, so counting them per entry walks its parts in order.
+        var slotIndex: [UUID: Int] = [:]
         let lines = Scheduler.schedule(scheduleItems, hours: settings.workingHours).compactMap { slot in
             fieldsById[slot.entryId].map { f in
-                TimesheetLine(
+                let index = slotIndex[slot.entryId, default: 0]
+                slotIndex[slot.entryId] = index + 1
+                return TimesheetLine(
                     id: UUID(), entryId: slot.entryId, start: slot.start, end: slot.end,
-                    description: f.description, ticket: f.ticket,
+                    description: f.description(forSlot: index), ticket: f.ticket,
                     activityType: f.activityType, classification: f.classification)
             }
         }
@@ -66,6 +70,7 @@ private struct LineFields {
     var estimatedMinutes: Int
     var fixed: (start: ClockTime, end: ClockTime)?
     var description: String
+    var parts: [String]
     var ticket: String?
     var activityType: String
     var classification: String
@@ -79,6 +84,7 @@ private struct LineFields {
             estimatedMinutes = LineFields.skippedMinutes
             fixed = nil
             description = entry.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            parts = []
             activityType = ""
             classification = ""
             return
@@ -94,8 +100,15 @@ private struct LineFields {
             fixed = nil
         }
         description = item.description.trimmingCharacters(in: .whitespacesAndNewlines)
+        parts = item.parts.compactMap(LineFields.nonBlank)
         activityType = item.activityType
         classification = item.classification
+    }
+
+    /// The k-th slot of a split entry takes the k-th part; extra slots repeat the last one.
+    /// Without parts every slot uses the description.
+    func description(forSlot index: Int) -> String {
+        parts.isEmpty ? description : parts[min(index, parts.count - 1)]
     }
 
     /// Entry's own ticket first, then the model's if the text contains it, then the first
