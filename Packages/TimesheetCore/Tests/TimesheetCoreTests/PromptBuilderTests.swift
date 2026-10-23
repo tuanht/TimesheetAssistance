@@ -131,4 +131,23 @@ struct PromptBuilderTests {
         let entryRule = try #require(prompt.system.range(of: "- Text between <entry>"))
         #expect(ruleRange.upperBound < entryRule.lowerBound)
     }
+
+    @Test func onlyEntriesStatingAClockTimeMayHaveFixedTimes() throws {
+        let entries = [snapshot("Standup 9:30"), snapshot("Worked 7h")]
+        let prompt = PromptBuilder.build(entries: entries, day: day, settings: .default)
+
+        let root = try #require(try JSONSerialization.jsonObject(with: Data(prompt.jsonSchema.utf8)) as? [String: Any])
+        let properties = try #require(root["properties"] as? [String: Any])
+        let items = try #require(properties["items"] as? [String: Any])
+        let prefix = try #require(items["prefixItems"] as? [[String: Any]])
+        let fixedStarts = prefix.map { item in
+            (item["properties"] as? [String: Any])?["fixedStart"] as? [String: Any]
+        }
+        #expect(fixedStarts[0]?["anyOf"] != nil)
+        #expect(fixedStarts[1] as? [String: String] == ["type": "null"])
+    }
+
+    @Test func systemSaysDurationIsNotAClockTime() {
+        #expect(PromptBuilder.system.contains("A duration such as 2h or 45 min is not a clock time."))
+    }
 }

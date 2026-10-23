@@ -20,11 +20,13 @@ public enum PromptBuilder {
     public static func build(entries: [EntrySnapshot], day: Date, settings: AppSettings) -> Prompt {
         var keyMap: [String: UUID] = [:]
         var keys: [String] = []
+        var timedKeys: Set<String> = []
         var blocks: [String] = []
         for (index, entry) in entries.enumerated() {
             let key = "e\(index + 1)"
             keyMap[key] = entry.id
             keys.append(key)
+            if !ClockMention.times(in: entry.text).isEmpty { timedKeys.insert(key) }
             blocks.append(entryBlock(key: key, entry: entry))
         }
 
@@ -44,7 +46,7 @@ public enum PromptBuilder {
         \(blocks.joined(separator: "\n\n"))
         """
         let schema = ResponseSchema.json(
-            keys: keys, activityTypes: settings.activityTypes, classifications: settings.classifications)
+            keys: keys, timedKeys: timedKeys, activityTypes: settings.activityTypes, classifications: settings.classifications)
         return Prompt(system: system, user: user, keyMap: keyMap, jsonSchema: schema)
     }
 
@@ -58,7 +60,7 @@ public enum PromptBuilder {
     - Output exactly one item per entry key, in the same order. Never merge or skip entries.
     - "key": the entry key exactly as given (e1, e2, …).
     - "minutes": integer, your relative effort estimate for the entry. The schedule is computed later; do not try to fill the day.
-    - "fixedStart" and "fixedEnd": "HH:mm" in 24-hour time, set only when the entry text states the time it happened; otherwise null.
+    - "fixedStart" and "fixedEnd": "HH:mm" in 24-hour time, set only when the entry text states a clock time such as 09:30 or 2pm; otherwise null. A duration such as 2h or 45 min is not a clock time.
     - "description": a short past-tense timesheet phrase, without the ticket number.
     - "ticket": the entry's ticket reference, or one written in its text; otherwise null.
     - "activityType": copied exactly from the allowed activityType list.

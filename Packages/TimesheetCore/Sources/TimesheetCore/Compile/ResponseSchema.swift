@@ -6,8 +6,13 @@ public enum ResponseSchema {
     static let itemFields = ["key", "minutes", "fixedStart", "fixedEnd", "description",
                              "ticket", "activityType", "classification"]
 
-    public static func json(keys: [String], activityTypes: [String], classifications: [String]) -> String {
-        let items = keys.map { item(key: $0, activityTypes: activityTypes, classifications: classifications) }
+    /// `timedKeys` are the entries whose text states a clock time; the rest may not have fixed times.
+    public static func json(
+        keys: [String], timedKeys: Set<String>, activityTypes: [String], classifications: [String]
+    ) -> String {
+        let items = keys.map {
+            item(key: $0, timed: timedKeys.contains($0), activityTypes: activityTypes, classifications: classifications)
+        }
         return object([
             ("additionalProperties", fragment(false)),
             ("properties", object([
@@ -24,12 +29,13 @@ public enum ResponseSchema {
         ])
     }
 
-    private static func item(key: String, activityTypes: [String], classifications: [String]) -> String {
+    private static func item(key: String, timed: Bool, activityTypes: [String], classifications: [String]) -> String {
+        let fixedTime = timed ? nullableString : null
         let schemas: [String: Any] = [
             "key": ["const": key],
             "minutes": ["type": "integer", "minimum": 1] as [String: Any],
-            "fixedStart": nullableString,
-            "fixedEnd": nullableString,
+            "fixedStart": fixedTime,
+            "fixedEnd": fixedTime,
             "description": ["type": "string"],
             "ticket": nullableString,
             "activityType": oneOf(activityTypes),
@@ -44,6 +50,7 @@ public enum ResponseSchema {
     }
 
     private static var nullableString: [String: Any] { ["anyOf": [["type": "string"], ["type": "null"]]] }
+    private static var null: [String: Any] { ["type": "null"] }
 
     /// Exact strings, since the validator compares them verbatim; an empty list cannot be an
     /// empty enum (nothing would match), so it falls back to any string for the validator to flag.
