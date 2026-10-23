@@ -20,7 +20,8 @@ public enum ClockMention {
                 return r.location == NSNotFound ? nil : ns.substring(with: r)
             }
             if let h = group(1).flatMap(Int.init), let m = group(2).flatMap(Int.init) {
-                return time(hour: h, minute: m, meridiem: group(3))
+                // "13:00 pm" is a 24-hour time with a stray suffix, so read it as H:mm.
+                return time(hour: h, minute: m, meridiem: (13..<24).contains(h) ? nil : group(3))
             }
             return group(4).flatMap(Int.init).flatMap { time(hour: $0, minute: 0, meridiem: group(5)) }
         })

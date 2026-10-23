@@ -12,6 +12,9 @@ struct ClockMentionTests {
         ("sync 4:45pm", [ClockTime(16, 45)]),
         ("demo at 10 PM", [ClockTime(22, 0)]),
         ("from 09:00 to 3pm", [ClockTime(9, 0), ClockTime(15, 0)]),
+        ("13:00 pm", [ClockTime(13, 0)]),
+        ("9:30 amazing", [ClockTime(9, 30)]),
+        ("10:00-11:30 sprint planning", [ClockTime(10, 0), ClockTime(11, 30)]),
     ])
     func recognised(text: String, expected: [ClockTime]) {
         #expect(ClockMention.times(in: text) == Set(expected))
