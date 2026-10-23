@@ -86,16 +86,18 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var classifications: [String]
     public var workingHours: WorkingHours
     public var model: ModelSelection
+    public var integrations: IntegrationSettings
 
     public init(
         template: TemplateSettings, activityTypes: [String], classifications: [String],
-        workingHours: WorkingHours, model: ModelSelection
+        workingHours: WorkingHours, model: ModelSelection, integrations: IntegrationSettings = .default
     ) {
         self.template = template
         self.activityTypes = activityTypes
         self.classifications = classifications
         self.workingHours = workingHours
         self.model = model
+        self.integrations = integrations
     }
 
     public static let `default` = AppSettings(
@@ -163,6 +165,7 @@ extension AppSettings {
             classifications: try c.decodeIfPresent([String].self, forKey: .classifications) ?? d.classifications,
             workingHours: try c.decodeIfPresent(WorkingHours.self, forKey: .workingHours) ?? d.workingHours,
             // An unknown or malformed selection (e.g. a source added later) means no model is chosen.
-            model: (try? c.decodeIfPresent(ModelSelection.self, forKey: .model)) ?? ModelSelection.none)
+            model: (try? c.decodeIfPresent(ModelSelection.self, forKey: .model)) ?? ModelSelection.none,
+            integrations: try c.decodeIfPresent(IntegrationSettings.self, forKey: .integrations) ?? d.integrations)
     }
 }

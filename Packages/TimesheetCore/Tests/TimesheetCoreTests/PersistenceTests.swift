@@ -232,6 +232,51 @@ struct PersistenceTests {
         #expect(all.first?.compiledAt == date(2026, 10, 22, 19))
     }
 
+    @Test func contextFieldsPersist() throws {
+        let dir = try tempDirectory()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let url = dir.appendingPathComponent("store.sqlite")
+        let updated = date(2026, 10, 22, 11, 15)
+        do {
+            let context = ModelContext(try Store.container(url: url))
+            let entry = LogEntry(day: date(2026, 10, 22), type: .ticket, ticketRef: "ABC-1", durationHint: nil, text: "ctx")
+            entry.contextSummary = "Fixes retry on timeout"
+            entry.contextRefs = ["ABC-1", "acme/web#7"]
+            entry.contextEdited = true
+            entry.contextUpdatedAt = updated
+            context.insert(entry)
+            try context.save()
+        }
+        let reopened = ModelContext(try Store.container(url: url))
+        let fetched = try #require(try Store.entries(on: date(2026, 10, 22), in: reopened).first)
+        #expect(fetched.contextSummary == "Fixes retry on timeout")
+        #expect(fetched.contextRefs == ["ABC-1", "acme/web#7"])
+        #expect(fetched.contextEdited)
+        #expect(fetched.contextUpdatedAt == updated)
+    }
+
+    @Test func newEntryHasNoContext() {
+        let entry = LogEntry(day: date(2026, 10, 22), type: .note, ticketRef: nil, durationHint: nil, text: "plain")
+        #expect(entry.contextSummary == nil)
+        #expect(entry.contextRefs == nil)
+        #expect(!entry.contextEdited)
+        #expect(entry.contextUpdatedAt == nil)
+    }
+
+    @Test func snapshotCarriesSummary() {
+        let entry = LogEntry(day: date(2026, 10, 22), type: .ticket, ticketRef: "ABC-1", durationHint: nil, text: "t")
+        entry.contextSummary = "Fixes retry"
+        #expect(entry.snapshot.contextSummary == "Fixes retry")
+        #expect(entry.snapshot == EntrySnapshot(id: entry.id, type: .ticket, ticketRef: "ABC-1", durationHint: nil,
+                                                text: "t", contextSummary: "Fixes retry"))
+    }
+
+    @Test func blankSummaryIsNil() {
+        let entry = LogEntry(day: date(2026, 10, 22), type: .note, ticketRef: nil, durationHint: nil, text: "t")
+        entry.contextSummary = "  \n\t "
+        #expect(entry.snapshot.contextSummary == nil)
+    }
+
     private func tempDirectory() throws -> URL {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)

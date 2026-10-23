@@ -146,6 +146,15 @@ public enum SettingsValidation {
         return sameHost ? field : nil
     }
 
+    // MARK: Integrations
+
+    /// An empty value means no default repository.
+    public static func defaultRepoError(_ value: String) -> String? {
+        if value.isEmpty { return nil }
+        return value.wholeMatch(of: /[A-Za-z0-9-]+\/[A-Za-z0-9._-]+/) == nil
+            ? "Use the form owner/repo, for example acme/web." : nil
+    }
+
     // MARK: Helpers
 
     private static func isBlank(_ s: String) -> Bool {

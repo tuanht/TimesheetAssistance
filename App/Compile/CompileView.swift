@@ -228,6 +228,7 @@ private struct CompileBar: View {
     // Observed so the client plan is re-read when the model setting or a download changes.
     @EnvironmentObject private var settings: SettingsStore
     @EnvironmentObject private var models: MLXModelManager
+    @EnvironmentObject private var coordinator: ContextCoordinator
     @Environment(\.openSettings) private var openSettings
     @AppStorage("settingsTab") private var settingsTab = "template"
 
@@ -252,6 +253,12 @@ private struct CompileBar: View {
                     }
                 } else if model.entryCount == 0 {
                     Text(model.isSingleDay ? "No entries for this day" : "No entries in this range")
+                        .foregroundStyle(.secondary)
+                }
+                // A notice only: compile runs with the summaries saved so far.
+                let fetching = coordinator.pendingCount(in: Set(model.days.flatMap(\.entryIds)))
+                if fetching > 0 {
+                    Text(fetching == 1 ? "1 entry is still fetching details" : "\(fetching) entries are still fetching details")
                         .foregroundStyle(.secondary)
                 }
             }

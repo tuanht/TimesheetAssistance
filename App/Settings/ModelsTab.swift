@@ -61,6 +61,7 @@ struct ModelsTab: View {
             }
         }
         .formStyle(.grouped)
+        .scrollsOnlyWhenOverflowing()
         .onAppear(perform: load)
         .onDisappear { cancelTest() }
         .onChange(of: [baseURL, apiKey]) {

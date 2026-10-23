@@ -121,4 +121,49 @@ struct SettingsStoreTests {
         let bak = try #require(second.resetBackupURL)
         #expect(try String(contentsOf: bak, encoding: .utf8) == "[")
     }
+
+    // MARK: Integrations
+
+    private func decode(_ json: String) throws -> AppSettings {
+        try JSONDecoder().decode(AppSettings.self, from: Data(json.utf8))
+    }
+
+    @Test func decodesWithoutIntegrations() throws {
+        let settings = try decode(#"{ "activityTypes": ["Alpha"] }"#)
+        #expect(settings.integrations == .default)
+        #expect(settings.activityTypes == ["Alpha"])
+    }
+
+    @Test func decodesPartialIntegrations() throws {
+        let settings = try decode(#"{ "integrations": { "defaultRepo": "acme/web" } }"#)
+        var expected = IntegrationSettings.default
+        expected.defaultRepo = "acme/web"
+        #expect(settings.integrations == expected)
+    }
+
+    @Test func unknownAuthMethodFallsBack() throws {
+        let settings = try decode(#"{ "integrations": { "jiraMethod": "smokeSignal", "githubMethod": "appSignIn" } }"#)
+        #expect(settings.integrations.jiraMethod == .personalToken)
+        #expect(settings.integrations.githubMethod == .appSignIn)
+    }
+
+    @Test func roundTripsIntegrations() throws {
+        let url = tempURL()
+        let store = SettingsStore(url: url)
+        store.settings.integrations = IntegrationSettings(
+            jiraMethod: .appSignIn, jiraSiteId: "site-1", jiraEmail: "dev@example.com",
+            githubMethod: .appSignIn, githubAppClientId: "client-1", defaultRepo: "acme/web")
+        try store.save()
+        #expect(SettingsStore(url: url).settings == store.settings)
+    }
+
+    @Test func integrationDefaults() {
+        let d = IntegrationSettings.default
+        #expect(d.jiraMethod == .personalToken)
+        #expect(d.githubMethod == .personalToken)
+        #expect(d.jiraSiteId == nil && d.jiraEmail == nil && d.githubAppClientId == nil && d.defaultRepo == nil)
+        #expect(AppSettings.default.integrations == .default)
+        #expect(AuthMethod.personalToken.displayName == "Personal token")
+        #expect(AuthMethod.appSignIn.displayName == "App sign-in")
+    }
 }

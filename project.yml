@@ -8,6 +8,8 @@ packages:
     path: Packages/TimesheetCore
   LocalModels:
     path: Packages/LocalModels
+  Integrations:
+    path: Packages/Integrations
 targets:
   TimesheetAssistant:
     type: application
@@ -17,6 +19,7 @@ targets:
     dependencies:
       - package: TimesheetCore
       - package: LocalModels
+      - package: Integrations
     info:
       path: App/Info.plist
       properties:

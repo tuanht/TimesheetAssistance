@@ -20,12 +20,17 @@ public struct EntrySnapshot: Equatable, Sendable {
     public var ticketRef: String?
     public var durationHint: String?
     public var text: String
+    public var contextSummary: String?
 
-    public init(id: UUID, type: EntryType, ticketRef: String?, durationHint: String?, text: String) {
+    public init(
+        id: UUID, type: EntryType, ticketRef: String?, durationHint: String?, text: String,
+        contextSummary: String? = nil
+    ) {
         self.id = id
         self.type = type
         self.ticketRef = ticketRef
         self.durationHint = durationHint
         self.text = text
+        self.contextSummary = contextSummary
     }
 }

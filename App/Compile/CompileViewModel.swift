@@ -103,7 +103,7 @@ final class CompileViewModel: ObservableObject {
 
     func compile() async {
         let plan = clientPlan
-        guard let client = makeClient(plan) else {
+        guard let client = LLMClientFactory.make(plan, models: models) else {
             // The model can change after the button was enabled; say why instead of doing nothing.
             if case .unavailable(let reason) = plan { state = .failed(reason.message) }
             return
@@ -127,8 +127,10 @@ final class CompileViewModel: ObservableObject {
             if Task.isCancelled { return }
             state = .running(done: index, total: work.count)
             do {
-                let result = try await Compiler(client: client)
-                    .compile(entries: item.snapshots, day: item.day, settings: current)
+                // Waits its turn behind any context summary using the same model.
+                let result = try await ModelGate.shared.run {
+                    try await Compiler(client: client).compile(entries: item.snapshots, day: item.day, settings: current)
+                }
                 try Task.checkCancellation()
                 guard let at = days.firstIndex(where: { DayKey.string(for: $0.day) == item.key }) else { continue }
                 days[at].lines = result.lines
@@ -209,18 +211,6 @@ final class CompileViewModel: ObservableObject {
         lines.enumerated()
             .sorted { ($0.element.start, $0.offset) < ($1.element.start, $1.offset) }
             .map(\.element)
-    }
-
-    private func makeClient(_ plan: ClientPlan) -> LLMClient? {
-        switch plan {
-        case .local(let repoId):
-            return models.client(for: repoId)
-        case .endpoint(let config):
-            return OpenAICompatibleClient(
-                config: config, apiKey: KeychainStore.get(account: KeychainStore.apiKeyAccount))
-        case .unavailable:
-            return nil
-        }
     }
 
     /// Saves an edit or delete; a failure is shown as `storeError`.

@@ -186,21 +186,25 @@ private struct EntryRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
-            HStack(spacing: 8) {
-                Text(entry.type.displayName).font(.headline)
-                if let ticket = entry.ticketRef {
-                    Text(ticket).font(.body.monospaced()).foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 8) {
+                    Text(entry.type.displayName).font(.headline)
+                    if let ticket = entry.ticketRef {
+                        Text(ticket).font(.body.monospaced()).foregroundStyle(.secondary)
+                    }
+                    if let hint = entry.durationHint {
+                        Text(hint).foregroundStyle(.secondary)
+                    }
                 }
-                if let hint = entry.durationHint {
-                    Text(hint).foregroundStyle(.secondary)
-                }
+                Text(firstTwoLines)
+                    .lineLimit(2)
+                    .foregroundStyle(.primary)
             }
-            Text(firstTwoLines)
-                .lineLimit(2)
-                .foregroundStyle(.primary)
+            .accessibilityElement(children: .combine)
+            // Outside the combined element so Retry and Fetch details stay separate buttons.
+            EntryContextView(entry: entry)
         }
         .padding(.vertical, 2)
-        .accessibilityElement(children: .combine)
     }
 
     private var firstTwoLines: String {

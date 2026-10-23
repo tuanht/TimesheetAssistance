@@ -22,7 +22,7 @@ Why: writing the daily timesheet by hand from scattered notes is tedious. The ra
 ## Non-goals
 
 - No direct integration with the timesheet system (no API push). Output is copy/paste.
-- No import from Jira, GitHub, calendar, or other tools in v1. Entries are typed or pasted by the user.
+- No import from Jira, GitHub, calendar, or other tools in v1. Entries are typed or pasted by the user. Superseded by `2026-10-22-ticket-context-design.md`.
 - No sync, accounts, or multi-device support.
 - No cloud LLM providers.
 
@@ -135,6 +135,8 @@ Why: writing the daily timesheet by hand from scattered notes is tedious. The ra
 - Authored as one SVG source in the repo (`Design/AppIcon.svg`). A script renders all `AppIcon.appiconset` sizes (16–1024 px, @1x/@2x) into the asset catalog.
 
 ### Privacy
+Superseded by `2026-10-22-ticket-context-design.md`.
+
 - No network calls except: Hugging Face model downloads (user-initiated) and the user's custom endpoint.
 - No analytics or third-party SDKs that phone home.
 - Custom endpoint: localhost and private LAN addresses are accepted silently. Any other host is allowed only after a clear warning that entry data will leave the Mac, which the user must confirm.
