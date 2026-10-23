@@ -326,10 +326,10 @@ struct OpenAICompatibleClientTests {
         #expect(try bodyJSON(try #require(StubProtocol.requests.first))["response_format"] == nil)
     }
 
-    @Test(arguments: [400, 422])
+    @Test(arguments: [400, 422, 500])
     func retriesWithoutSchemaOnRejection(status: Int) async throws {
         let sut = OpenAICompatibleClient(
-            config: config, apiKey: nil,
+            config: config, apiKey: "sk-test",
             session: StubProtocol.session(replying: [
                 .response(status: status, body: Data(#"{"error":{"message":"unsupported"}}"#.utf8)),
                 .response(status: 200, body: chatBody("ok")),
@@ -339,7 +339,12 @@ struct OpenAICompatibleClientTests {
         let requests = StubProtocol.requests
         #expect(requests.count == 2)
         #expect(try bodyJSON(requests[0])["response_format"] != nil)
-        #expect(try bodyJSON(requests[1])["response_format"] == nil)
+        let retry = try bodyJSON(requests[1])
+        #expect(retry["response_format"] == nil)
+        #expect(retry["model"] as? String == "qwen3:8b")
+        #expect(retry["stream"] as? Bool == false)
+        #expect(requests[1].url == requests[0].url)
+        #expect(requests[1].value(forHTTPHeaderField: "Authorization") == "Bearer sk-test")
     }
 
     @Test func noRetryOnOtherErrors() async throws {

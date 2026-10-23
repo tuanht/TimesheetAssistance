@@ -20,7 +20,7 @@
 
 - **Shape:** `"response_format": {"type": "json_schema", "json_schema": {"name": "timesheet_lines", "schema": <schema>}}`. No `"strict": true`: OpenAI's strict mode rejects `prefixItems`, `const` and `minItems`, which the schema needs.
 - **Verbatim schema:** the schema string is embedded byte for byte, never re-parsed into a dictionary. Constrained decoders keep property order, and `key` must stay first. A schema string that is not valid JSON is ignored (plain request).
-- **Fallback:** only HTTP 400 and 422 on the schema request trigger one plain retry. Every other error (401, 404, 503, timeout, redirect, cancellation) is thrown as before, with no retry.
+- **Fallback:** only HTTP 400, 422 and 500 on the schema request trigger one plain retry (500 added after review: Ollama returns it when schema-to-grammar conversion fails). Every other error (401, 404, 503, timeout, redirect, cancellation) is thrown as before, with no retry.
 - **Empty `jsonSchema`:** `nil` means a plain request, identical to the 2-argument call.
 
 ## Review Focus

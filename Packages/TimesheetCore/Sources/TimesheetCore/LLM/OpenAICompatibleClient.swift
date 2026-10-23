@@ -18,7 +18,8 @@ public struct OpenAICompatibleClient: LLMClient {
     }
 
     /// Sends `jsonSchema` as `response_format` so servers with structured output constrain decoding.
-    /// A server that rejects the field (400/422) gets one plain retry; the parser and validator still guard the reply.
+    /// A server that rejects the field (400/422, or 500 from Ollama when the schema-to-grammar step fails) gets one
+    /// plain retry; the parser and validator still guard the reply.
     public func complete(system: String, user: String, jsonSchema: String?) async throws -> String {
         let messages: [ChatRequest.Message] = [.init(role: "system", content: system), .init(role: "user", content: user)]
         let plain = try JSONEncoder().encode(ChatRequest(
@@ -28,7 +29,7 @@ public struct OpenAICompatibleClient: LLMClient {
         if let constrained = jsonSchema.flatMap({ Self.withResponseFormat(plain, schema: $0) }) {
             do {
                 data = try await send(chatRequest(body: constrained))
-            } catch LLMError.http(let status, _) where status == 400 || status == 422 {
+            } catch LLMError.http(let status, _) where [400, 422, 500].contains(status) {
                 try Task.checkCancellation()
                 data = try await send(chatRequest(body: plain))
             }
