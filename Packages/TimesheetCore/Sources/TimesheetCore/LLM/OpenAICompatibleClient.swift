@@ -14,16 +14,28 @@ public struct OpenAICompatibleClient: LLMClient {
     }
 
     public func complete(system: String, user: String) async throws -> String {
-        var request = makeRequest(path: "chat/completions")
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONEncoder().encode(ChatRequest(
-            model: config.model,
-            messages: [.init(role: "system", content: system), .init(role: "user", content: user)],
-            temperature: 0.2,
-            stream: false))
+        try await complete(system: system, user: user, jsonSchema: nil)
+    }
 
-        let data = try await send(request)
+    /// Sends `jsonSchema` as `response_format` so servers with structured output constrain decoding.
+    /// A server that rejects the field (400/422) gets one plain retry; the parser and validator still guard the reply.
+    public func complete(system: String, user: String, jsonSchema: String?) async throws -> String {
+        let messages: [ChatRequest.Message] = [.init(role: "system", content: system), .init(role: "user", content: user)]
+        let plain = try JSONEncoder().encode(ChatRequest(
+            model: config.model, messages: messages, temperature: 0.2, stream: false))
+
+        let data: Data
+        if let constrained = jsonSchema.flatMap({ Self.withResponseFormat(plain, schema: $0) }) {
+            do {
+                data = try await send(chatRequest(body: constrained))
+            } catch LLMError.http(let status, _) where status == 400 || status == 422 {
+                try Task.checkCancellation()
+                data = try await send(chatRequest(body: plain))
+            }
+        } else {
+            data = try await send(chatRequest(body: plain))
+        }
+
         guard let decoded = try? JSONDecoder().decode(ChatResponse.self, from: data),
               let content = decoded.choices.first?.message.content,
               !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -42,6 +54,30 @@ public struct OpenAICompatibleClient: LLMClient {
     }
 
     // MARK: - Request plumbing
+
+    private func chatRequest(body: Data) -> URLRequest {
+        var request = makeRequest(path: "chat/completions")
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = body
+        return request
+    }
+
+    /// Splices `response_format` into the encoded request as raw bytes: re-encoding the schema would
+    /// lose its property order, and constrained decoders follow that order (`key` must come first).
+    /// No `"strict": true`, since strict mode rejects `prefixItems`, `const` and `minItems`.
+    /// Returns nil when the schema isn't a JSON object, so the caller sends a plain request.
+    private static func withResponseFormat(_ body: Data, schema: String) -> Data? {
+        let schemaData = Data(schema.utf8)
+        guard (try? JSONSerialization.jsonObject(with: schemaData)) is [String: Any],
+              body.last == UInt8(ascii: "}")
+        else { return nil }
+        var spliced = body.dropLast()
+        spliced.append(Data(#","response_format":{"type":"json_schema","json_schema":{"name":"timesheet_lines","schema":"#.utf8))
+        spliced.append(schemaData)
+        spliced.append(Data("}}}".utf8))
+        return Data(spliced)
+    }
 
     private func makeRequest(path: String) -> URLRequest {
         var request = URLRequest(url: endpointURL(path), timeoutInterval: timeout)
