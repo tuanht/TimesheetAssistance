@@ -157,6 +157,22 @@ struct SettingsStoreTests {
         #expect(SettingsStore(url: url).settings == store.settings)
     }
 
+    // MARK: System prompt override
+
+    @Test func decodesWithoutSystemPromptOverride() throws {
+        let settings = try decode(#"{ "activityTypes": ["Alpha"] }"#)
+        #expect(settings.systemPromptOverride == nil)
+        #expect(AppSettings.default.systemPromptOverride == nil)
+    }
+
+    @Test func roundTripsSystemPromptOverride() throws {
+        let url = tempURL()
+        let store = SettingsStore(url: url)
+        store.settings.systemPromptOverride = "Custom instructions."
+        try store.save()
+        #expect(SettingsStore(url: url).settings.systemPromptOverride == "Custom instructions.")
+    }
+
     @Test func integrationDefaults() {
         let d = IntegrationSettings.default
         #expect(d.jiraMethod == .personalToken)

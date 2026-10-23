@@ -87,10 +87,13 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var workingHours: WorkingHours
     public var model: ModelSelection
     public var integrations: IntegrationSettings
+    /// Replaces `PromptBuilder.system` when non-blank; `nil` uses the built-in instructions.
+    public var systemPromptOverride: String?
 
     public init(
         template: TemplateSettings, activityTypes: [String], classifications: [String],
-        workingHours: WorkingHours, model: ModelSelection, integrations: IntegrationSettings = .default
+        workingHours: WorkingHours, model: ModelSelection, integrations: IntegrationSettings = .default,
+        systemPromptOverride: String? = nil
     ) {
         self.template = template
         self.activityTypes = activityTypes
@@ -98,6 +101,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.workingHours = workingHours
         self.model = model
         self.integrations = integrations
+        self.systemPromptOverride = systemPromptOverride
     }
 
     public static let `default` = AppSettings(
@@ -166,6 +170,7 @@ extension AppSettings {
             workingHours: try c.decodeIfPresent(WorkingHours.self, forKey: .workingHours) ?? d.workingHours,
             // An unknown or malformed selection (e.g. a source added later) means no model is chosen.
             model: (try? c.decodeIfPresent(ModelSelection.self, forKey: .model)) ?? ModelSelection.none,
-            integrations: try c.decodeIfPresent(IntegrationSettings.self, forKey: .integrations) ?? d.integrations)
+            integrations: try c.decodeIfPresent(IntegrationSettings.self, forKey: .integrations) ?? d.integrations,
+            systemPromptOverride: try c.decodeIfPresent(String.self, forKey: .systemPromptOverride))
     }
 }

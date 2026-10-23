@@ -11,7 +11,8 @@ struct GuidedJSONTests {
     private static let eos = Int32(vocab.count - 1)
 
     private let schema = ResponseSchema.json(
-        keys: ["e1", "e2"], activityTypes: ["Development", "Meeting"], classifications: ["Billable"])
+        keys: ["e1", "e2"], timedKeys: ["e1"], activityTypes: ["Development", "Meeting"],
+        classifications: ["Billable"])
 
     private func tokenizer() throws -> GrammarTokenizer {
         try GrammarTokenizer(vocab: Self.vocab, vocabType: .raw, eosTokenId: Self.eos)
@@ -34,8 +35,10 @@ struct GuidedJSONTests {
     }
 
     // Properties appear in the schema's prompt order, which the grammar enforces.
-    private func item(_ key: String, activityType: String = "Development", ticket: String = "null") -> String {
-        #"{"key":"\#(key)","minutes":30,"fixedStart":null,"fixedEnd":null,"description":"Work","#
+    private func item(
+        _ key: String, activityType: String = "Development", ticket: String = "null", fixedStart: String = "null"
+    ) -> String {
+        #"{"key":"\#(key)","minutes":30,"fixedStart":\#(fixedStart),"fixedEnd":null,"description":"Work","parts":["Work"],"#
             + #""ticket":\#(ticket),"activityType":"\#(activityType)","classification":"Billable"}"#
     }
 
@@ -57,6 +60,11 @@ struct GuidedJSONTests {
 
     @Test func wrongKeyOrderIsRejected() throws {
         #expect(try !accepts(reply([item("e2"), item("e1")]), schema: schema))
+    }
+
+    @Test func fixedTimeIsAcceptedOnlyForTimedKeys() throws {
+        #expect(try accepts(reply([item("e1", fixedStart: #""09:30""#), item("e2")]), schema: schema))
+        #expect(try !accepts(reply([item("e1"), item("e2", fixedStart: #""09:30""#)]), schema: schema))
     }
 
     @Test func missingItemIsRejected() throws {

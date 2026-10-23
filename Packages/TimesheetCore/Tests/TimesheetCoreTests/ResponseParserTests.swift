@@ -22,6 +22,18 @@ struct ResponseParserTests {
         #expect(try ResponseParser.parse(text) == expected)
     }
 
+    @Test func partsDecoded() throws {
+        let items = try ResponseParser.parse(
+            #"{"items":[{"key":"e1","minutes":60,"description":"D","parts":["Analysed",null,"Fixed",3],"activityType":"A","classification":"C"}]}"#)
+        #expect(items.first?.parts == ["Analysed", "Fixed"])
+    }
+
+    @Test func missingOrMalformedPartsAreEmpty() throws {
+        let items = try ResponseParser.parse(
+            #"{"items":[{"key":"e1","description":"D"},{"key":"e2","description":"D","parts":"Fixed"}]}"#)
+        #expect(items.map(\.parts) == [[], []])
+    }
+
     @Test func validDraftInsideThinkBlockIgnored() throws {
         let draft = #"{"items":[{"key":"e9","minutes":5,"description":"Draft","activityType":"Support","classification":"Internal"}]}"#
         let text = "<think>First draft: \(draft) wait, fix it</think>\n\(json)"

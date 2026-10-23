@@ -97,7 +97,7 @@ struct PromptBuilderTests {
 
     @Test func systemStatesContract() {
         let prompt = PromptBuilder.build(entries: [snapshot("x")], day: day, settings: .default)
-        for field in ["\"items\"", "key", "minutes", "fixedStart", "fixedEnd", "description",
+        for field in ["\"items\"", "key", "minutes", "fixedStart", "fixedEnd", "description", "parts",
                       "ticket", "activityType", "classification"] {
             #expect(prompt.system.contains(field), "missing \(field)")
         }
@@ -125,10 +125,44 @@ struct PromptBuilderTests {
 
     @Test func systemPromptMentionsContext() throws {
         let rule = "- \"context\", when present, is background on the referenced ticket or pull request. "
-            + "Use it to make the description accurate, but the entry text says what the user actually did."
+            + "Use it to make the description and parts accurate, but the entry text says what the user actually did."
         let prompt = PromptBuilder.build(entries: [snapshot("x")], day: day, settings: .default)
         let ruleRange = try #require(prompt.system.range(of: rule))
         let entryRule = try #require(prompt.system.range(of: "- Text between <entry>"))
         #expect(ruleRange.upperBound < entryRule.lowerBound)
+    }
+
+    @Test func onlyEntriesStatingAClockTimeMayHaveFixedTimes() throws {
+        let entries = [snapshot("Standup 9:30"), snapshot("Worked 7h")]
+        let prompt = PromptBuilder.build(entries: entries, day: day, settings: .default)
+
+        let root = try #require(try JSONSerialization.jsonObject(with: Data(prompt.jsonSchema.utf8)) as? [String: Any])
+        let properties = try #require(root["properties"] as? [String: Any])
+        let items = try #require(properties["items"] as? [String: Any])
+        let prefix = try #require(items["prefixItems"] as? [[String: Any]])
+        let fixedStarts = prefix.map { item in
+            (item["properties"] as? [String: Any])?["fixedStart"] as? [String: Any]
+        }
+        #expect(fixedStarts[0]?["anyOf"] != nil)
+        #expect(fixedStarts[1] as? [String: String] == ["type": "null"])
+    }
+
+    @Test func systemSaysDurationIsNotAClockTime() {
+        #expect(PromptBuilder.system.contains("A duration such as 2h or 45 min is not a clock time."))
+    }
+
+    @Test func overrideReplacesSystem() {
+        var settings = AppSettings.default
+        settings.systemPromptOverride = "Custom instructions."
+        let prompt = PromptBuilder.build(entries: [snapshot("x")], day: day, settings: settings)
+        #expect(prompt.system == "Custom instructions.")
+    }
+
+    @Test(arguments: [nil, "", "  \n"] as [String?])
+    func blankOverrideKeepsBuiltInSystem(_ override: String?) {
+        var settings = AppSettings.default
+        settings.systemPromptOverride = override
+        let prompt = PromptBuilder.build(entries: [snapshot("x")], day: day, settings: settings)
+        #expect(prompt.system == PromptBuilder.system)
     }
 }

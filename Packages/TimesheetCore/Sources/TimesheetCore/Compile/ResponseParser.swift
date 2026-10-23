@@ -6,26 +6,29 @@ public struct ModelItem: Decodable, Equatable, Sendable {
     public var fixedStart: String?
     public var fixedEnd: String?
     public var description: String
+    /// The entry's work as consecutive steps; each slot of a split entry takes the next one.
+    public var parts: [String]
     public var ticket: String?
     public var activityType: String
     public var classification: String
 
     public init(
         key: String, minutes: Int, fixedStart: String?, fixedEnd: String?,
-        description: String, ticket: String?, activityType: String, classification: String
+        description: String, parts: [String] = [], ticket: String?, activityType: String, classification: String
     ) {
         self.key = key
         self.minutes = minutes
         self.fixedStart = fixedStart
         self.fixedEnd = fixedEnd
         self.description = description
+        self.parts = parts
         self.ticket = ticket
         self.activityType = activityType
         self.classification = classification
     }
 
     private enum CodingKeys: String, CodingKey {
-        case key, minutes, fixedStart, fixedEnd, description, ticket, activityType, classification
+        case key, minutes, fixedStart, fixedEnd, description, parts, ticket, activityType, classification
     }
 
     /// Small models often emit null or omit fields; keep the item and let validation flag the gaps.
@@ -42,12 +45,22 @@ public struct ModelItem: Decodable, Equatable, Sendable {
         fixedStart = string(.fixedStart)
         fixedEnd = string(.fixedEnd)
         description = string(.description) ?? ""
+        parts = ((try? c.decodeIfPresent([LossyString].self, forKey: .parts)) ?? nil)?.compactMap(\.value) ?? []
         ticket = string(.ticket)
         activityType = string(.activityType) ?? ""
         classification = string(.classification) ?? ""
     }
 
     static let defaultMinutes = 30
+}
+
+/// An array element that is kept only when it is a string, so one null or number doesn't lose the list.
+private struct LossyString: Decodable {
+    var value: String?
+
+    init(from decoder: Decoder) throws {
+        value = try? decoder.singleValueContainer().decode(String.self)
+    }
 }
 
 public enum ParseError: Error, Equatable {
