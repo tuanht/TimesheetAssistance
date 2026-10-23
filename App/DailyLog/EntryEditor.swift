@@ -130,7 +130,8 @@ struct EntryEditor: View {
                     Text("From \(refs.joined(separator: " · "))").foregroundStyle(.secondary)
                 }
                 if let id = entry?.id, let status = coordinator.status[id] {
-                    Text(status.text).foregroundStyle(.secondary)
+                    if let failures = status.failureText { Text(failures).foregroundStyle(.red) }
+                    if let other = status.text ?? status.noteText { Text(other).foregroundStyle(.secondary) }
                 }
                 Spacer()
                 Button("Refresh", action: requestRefresh)

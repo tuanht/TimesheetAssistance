@@ -61,7 +61,7 @@ The user's log entries are terse ("ABC-123 fixed retry bug", "reviewed #45"). Th
 ### When fetching happens
 - On save, the app computes the entry's reference set. It fetches only when that set differs from the set stored with the current summary (so fixing a typo in the note does not re-fetch).
 - Saving is never delayed: the entry is saved first, then a background job fetches and summarizes.
-- If neither account is connected, nothing is fetched and no status is shown. If only one is connected, only its references are fetched; the others are listed as "Jira not connected" / "GitHub not connected" in the entry's status.
+- If neither account is connected, nothing is fetched and no status is shown. If only one is connected, only its references are fetched; the others are listed as "Jira not connected" / "GitHub not connected" in the entry's status, in secondary text rather than red, since both services are optional.
 - A **Refresh** button on the entry re-fetches and re-summarizes. If the summary was edited by the user and is not blank, Refresh asks "Replace your edited summary?" first.
 - A summary the user cleared counts as opting out: saving with the same references fetches nothing. Changed references fetch without asking, since there is nothing to replace.
 - If the app quits mid-job, nothing is persisted for that job. An entry with references but no summary shows a **Fetch details** button.

@@ -228,8 +228,9 @@ final class ContextCoordinator: ObservableObject {
     }
 
     private func run(_ job: Job) async {
-        guard isAnyConnected else { return finish(job, failures: []) }
+        guard isAnyConnected else { return finish(job, failures: [], notes: []) }
         var failures: [String] = []
+        var notes: [String] = []
         func fail(_ message: String) { if !failures.contains(message) { failures.append(message) } }
 
         var sources: [FetchedSource] = []
@@ -237,7 +238,9 @@ final class ContextCoordinator: ObservableObject {
         for reference in job.detected.references {
             let service = reference.service
             guard isConnected(service) else {
-                fail(ContextError.notConnected(service).userMessage)
+                // The service is optional, so its refs are noted, not failed.
+                let note = ContextError.notConnected(service).userMessage
+                if !notes.contains(note) { notes.append(note) }
                 continue
             }
             guard update(job, .fetching(reference.canonical)) else { return }
@@ -255,7 +258,7 @@ final class ContextCoordinator: ObservableObject {
                 fail(Self.message(for: error, service: service))
             }
         }
-        guard !sources.isEmpty else { return finish(job, failures: failures) }
+        guard !sources.isEmpty else { return finish(job, failures: failures, notes: notes) }
 
         guard update(job, .summarizing) else { return }
         let summary: String
@@ -263,10 +266,10 @@ final class ContextCoordinator: ObservableObject {
             summary = try await summarize(sources)
         } catch {
             fail(Self.message(forSummary: error))
-            return finish(job, failures: failures)
+            return finish(job, failures: failures, notes: notes)
         }
-        apply(summary, job: job, failures: &failures)
-        finish(job, failures: failures)
+        apply(summary, job: job, failures: &failures, notes: &notes)
+        finish(job, failures: failures, notes: notes)
     }
 
     private func summarize(_ sources: [FetchedSource]) async throws -> String {
@@ -284,17 +287,19 @@ final class ContextCoordinator: ObservableObject {
 
     /// Writes the summary and the refs it was built from, unless the entry was deleted, its refs changed
     /// or the user edited it meanwhile.
-    private func apply(_ summary: String, job: Job, failures: inout [String]) {
+    private func apply(_ summary: String, job: Job, failures: inout [String], notes: inout [String]) {
         guard let entry = Self.entry(job.id, in: job.context) else {
             failures = []
+            notes = []
             return
         }
         let editedSinceStart = entry.contextSummary != job.summary || entry.contextEdited != job.edited
         guard ContextPolicy.shouldApply(
             jobRefs: job.detected.canonical, currentRefs: detect(entry).canonical, editedSinceStart: editedSinceStart)
         else {
-            // A stale result: its failures don't describe the entry any more.
+            // A stale result: its failures and notes don't describe the entry any more.
             failures = []
+            notes = []
             return
         }
         let previous = (entry.contextSummary, entry.contextRefs, entry.contextEdited, entry.contextUpdatedAt)
@@ -311,8 +316,8 @@ final class ContextCoordinator: ObservableObject {
         }
     }
 
-    private func finish(_ job: Job, failures: [String]) {
-        update(job, failures.isEmpty ? nil : .failed(failures))
+    private func finish(_ job: Job, failures: [String], notes: [String]) {
+        update(job, failures.isEmpty && notes.isEmpty ? nil : .finished(failures: failures, notes: notes))
     }
 
     /// Writes a running job's status. Returns false when the job is stale: a newer job for the entry

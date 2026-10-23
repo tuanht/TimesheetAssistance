@@ -46,9 +46,23 @@ struct ContextErrorTests {
         #expect(message == "The app tried an action it isn't allowed to use.")
     }
 
-    @Test func statusTextJoinsFailures() {
-        let failures = [ContextError.notConnected(.jira).userMessage, ContextError.notFound("acme/web#7").userMessage]
-        #expect(ContextStatus.failed(failures).text == "Jira not connected\nCouldn't find acme/web#7 on GitHub.")
+    @Test func finishedStatusKeepsFailuresAndNotesApart() {
+        let status = ContextStatus.finished(
+            failures: [ContextError.notFound("acme/web#7").userMessage, "Couldn’t save the summary. Try again."],
+            notes: [ContextError.notConnected(.jira).userMessage])
+        #expect(status.failureText == "Couldn't find acme/web#7 on GitHub.\nCouldn’t save the summary. Try again.")
+        #expect(status.noteText == "Jira not connected")
+    }
+
+    @Test func notesAloneHaveNoFailureText() {
+        let status = ContextStatus.finished(failures: [], notes: [ContextError.notConnected(.jira).userMessage])
+        #expect(status.failureText == nil)
+        #expect(status.noteText == "Jira not connected")
+    }
+
+    @Test func progressHasNoFailureOrNoteText() {
+        #expect(ContextStatus.summarizing.failureText == nil)
+        #expect(ContextStatus.fetching("ABC-123").noteText == nil)
     }
 
     @Test func statusTextFetchingAndSummarizing() {

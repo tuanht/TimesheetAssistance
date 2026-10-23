@@ -29,8 +29,12 @@ struct EntryContextView: View {
     @ViewBuilder
     private func statusLine(_ status: ContextStatus) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
-            if case .failed = status {
-                Text(status.text).foregroundStyle(.red)
+            if case .finished = status {
+                VStack(alignment: .leading, spacing: 2) {
+                    if let failures = status.failureText { Text(failures).foregroundStyle(.red) }
+                    // Skipped refs of a service that isn't connected: optional, so not an error.
+                    if let notes = status.noteText { Text(notes).foregroundStyle(.secondary) }
+                }
                 Button("Retry", action: retry)
                     .controlSize(.small)
                     .confirmationDialog("Replace your edited summary?", isPresented: $confirmingRetry,
@@ -38,8 +42,8 @@ struct EntryContextView: View {
                         Button("Replace", role: .destructive) { coordinator.enqueue(entry) }
                         Button("Keep", role: .cancel) {}
                     }
-            } else {
-                Text(status.text).foregroundStyle(.secondary)
+            } else if let text = status.text {
+                Text(text).foregroundStyle(.secondary)
             }
         }
         .font(.callout)
