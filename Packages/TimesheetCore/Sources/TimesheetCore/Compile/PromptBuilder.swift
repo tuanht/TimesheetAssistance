@@ -5,21 +5,26 @@ public struct Prompt: Equatable, Sendable {
     public var user: String
     /// Short entry keys (`e1`, `e2`, …) to entry ids; small models copy short keys reliably, UUIDs they do not.
     public var keyMap: [String: UUID]
+    /// JSON Schema of the expected reply, for clients that can constrain decoding to it.
+    public var jsonSchema: String
 
-    public init(system: String, user: String, keyMap: [String: UUID]) {
+    public init(system: String, user: String, keyMap: [String: UUID], jsonSchema: String = "") {
         self.system = system
         self.user = user
         self.keyMap = keyMap
+        self.jsonSchema = jsonSchema
     }
 }
 
 public enum PromptBuilder {
     public static func build(entries: [EntrySnapshot], day: Date, settings: AppSettings) -> Prompt {
         var keyMap: [String: UUID] = [:]
+        var keys: [String] = []
         var blocks: [String] = []
         for (index, entry) in entries.enumerated() {
             let key = "e\(index + 1)"
             keyMap[key] = entry.id
+            keys.append(key)
             blocks.append(entryBlock(key: key, entry: entry))
         }
 
@@ -38,7 +43,9 @@ public enum PromptBuilder {
 
         \(blocks.joined(separator: "\n\n"))
         """
-        return Prompt(system: system, user: user, keyMap: keyMap)
+        let schema = ResponseSchema.json(
+            keys: keys, activityTypes: settings.activityTypes, classifications: settings.classifications)
+        return Prompt(system: system, user: user, keyMap: keyMap, jsonSchema: schema)
     }
 
     static let system = """

@@ -81,6 +81,20 @@ struct PromptBuilderTests {
         #expect(found == ["XYZ-42", "ABC-7"])
     }
 
+    @Test func promptCarriesSchemaForItsKeys() throws {
+        let entries = [snapshot("first"), snapshot("second"), snapshot("third")]
+        let prompt = PromptBuilder.build(entries: entries, day: day, settings: .default)
+
+        let root = try #require(try JSONSerialization.jsonObject(with: Data(prompt.jsonSchema.utf8)) as? [String: Any])
+        let properties = try #require(root["properties"] as? [String: Any])
+        let items = try #require(properties["items"] as? [String: Any])
+        let prefix = try #require(items["prefixItems"] as? [[String: Any]])
+        let keys = prefix.map { item in
+            ((item["properties"] as? [String: Any])?["key"] as? [String: Any])?["const"] as? String
+        }
+        #expect(keys == ["e1", "e2", "e3"])
+    }
+
     @Test func systemStatesContract() {
         let prompt = PromptBuilder.build(entries: [snapshot("x")], day: day, settings: .default)
         for field in ["\"items\"", "key", "minutes", "fixedStart", "fixedEnd", "description",

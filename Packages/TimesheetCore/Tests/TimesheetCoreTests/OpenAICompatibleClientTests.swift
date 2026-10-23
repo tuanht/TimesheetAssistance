@@ -15,12 +15,18 @@ final class StubProtocol: URLProtocol, @unchecked Sendable {
     }
 
     private static let lock = NSLock()
-    nonisolated(unsafe) private static var reply: Reply = .response(status: 200, body: Data())
+    nonisolated(unsafe) private static var replies: [Reply] = [.response(status: 200, body: Data())]
     nonisolated(unsafe) private static var captured: [URLRequest] = []
 
     static func session(replying reply: Reply) -> URLSession {
+        session(replying: [reply])
+    }
+
+    /// Answers requests in order; the last reply repeats.
+    static func session(replying replies: [Reply]) -> URLSession {
+        precondition(!replies.isEmpty)
         lock.withLock {
-            self.reply = reply
+            self.replies = replies
             captured = []
         }
         let config = URLSessionConfiguration.ephemeral
@@ -40,7 +46,7 @@ final class StubProtocol: URLProtocol, @unchecked Sendable {
         }
         let reply = Self.lock.withLock {
             Self.captured.append(request)
-            return Self.reply
+            return Self.replies.count > 1 ? Self.replies.removeFirst() : Self.replies[0]
         }
         switch reply {
         case .response(let status, let body):
@@ -275,5 +281,103 @@ struct OpenAICompatibleClientTests {
         await #expect(throws: CancellationError.self) {
             _ = try await task.value
         }
+    }
+
+    // MARK: - response_format
+
+    private static let schema = #"{"type":"object","properties":{"b":{},"a":{}}}"#
+
+    private func bodyJSON(_ request: URLRequest) throws -> [String: Any] {
+        let body = try #require(request.httpBody)
+        return try #require(try JSONSerialization.jsonObject(with: body) as? [String: Any])
+    }
+
+    @Test func sendsResponseFormatWithSchema() async throws {
+        let sut = client(.response(status: 200, body: chatBody("ok")))
+        let result = try await sut.complete(system: "s", user: "u", jsonSchema: Self.schema)
+        #expect(result == "ok")
+
+        let request = try #require(StubProtocol.requests.first)
+        let json = try bodyJSON(request)
+        let format = try #require(json["response_format"] as? [String: Any])
+        #expect(format["type"] as? String == "json_schema")
+        let jsonSchema = try #require(format["json_schema"] as? [String: Any])
+        #expect(jsonSchema["name"] as? String == "timesheet_lines")
+        #expect(jsonSchema["strict"] == nil)
+        #expect(jsonSchema["schema"] is [String: Any])
+        #expect(json["model"] as? String == "qwen3:8b")
+        let raw = String(decoding: try #require(request.httpBody), as: UTF8.self)
+        #expect(raw.contains(Self.schema))
+    }
+
+    @Test func noResponseFormatWithoutSchema() async throws {
+        _ = try await client(.response(status: 200, body: chatBody("x"))).complete(system: "s", user: "u")
+        #expect(try bodyJSON(try #require(StubProtocol.requests.first))["response_format"] == nil)
+
+        _ = try await client(.response(status: 200, body: chatBody("x")))
+            .complete(system: "s", user: "u", jsonSchema: nil)
+        #expect(try bodyJSON(try #require(StubProtocol.requests.first))["response_format"] == nil)
+    }
+
+    @Test func invalidSchemaSendsPlainRequest() async throws {
+        _ = try await client(.response(status: 200, body: chatBody("x")))
+            .complete(system: "s", user: "u", jsonSchema: "{not json")
+        #expect(StubProtocol.requests.count == 1)
+        #expect(try bodyJSON(try #require(StubProtocol.requests.first))["response_format"] == nil)
+    }
+
+    @Test(arguments: [400, 422, 500])
+    func retriesWithoutSchemaOnRejection(status: Int) async throws {
+        let sut = OpenAICompatibleClient(
+            config: config, apiKey: "sk-test",
+            session: StubProtocol.session(replying: [
+                .response(status: status, body: Data(#"{"error":{"message":"unsupported"}}"#.utf8)),
+                .response(status: 200, body: chatBody("ok")),
+            ]))
+        let result = try await sut.complete(system: "s", user: "u", jsonSchema: Self.schema)
+        #expect(result == "ok")
+        let requests = StubProtocol.requests
+        #expect(requests.count == 2)
+        #expect(try bodyJSON(requests[0])["response_format"] != nil)
+        let retry = try bodyJSON(requests[1])
+        #expect(retry["response_format"] == nil)
+        #expect(retry["model"] as? String == "qwen3:8b")
+        #expect(retry["stream"] as? Bool == false)
+        #expect(requests[1].url == requests[0].url)
+        #expect(requests[1].value(forHTTPHeaderField: "Authorization") == "Bearer sk-test")
+    }
+
+    @Test func noRetryOnOtherErrors() async throws {
+        do {
+            _ = try await client(.response(status: 401, body: Data()))
+                .complete(system: "s", user: "u", jsonSchema: Self.schema)
+            Issue.record("expected error")
+        } catch let error as LLMError {
+            guard case .http(401, _) = error else {
+                Issue.record("got \(error)")
+                return
+            }
+        }
+        #expect(StubProtocol.requests.count == 1)
+
+        await #expect(throws: LLMError.modelNotReady) {
+            _ = try await client(.response(status: 503, body: Data()))
+                .complete(system: "s", user: "u", jsonSchema: Self.schema)
+        }
+        #expect(StubProtocol.requests.count == 1)
+    }
+
+    @Test func retryFailureIsReported() async throws {
+        let sut = client(.response(status: 400, body: Data("bad".utf8)))
+        do {
+            _ = try await sut.complete(system: "s", user: "u", jsonSchema: Self.schema)
+            Issue.record("expected error")
+        } catch let error as LLMError {
+            guard case .http(400, _) = error else {
+                Issue.record("got \(error)")
+                return
+            }
+        }
+        #expect(StubProtocol.requests.count == 2)
     }
 }

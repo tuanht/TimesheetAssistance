@@ -7,6 +7,7 @@ final class FakeLLMClient: LLMClient, @unchecked Sendable {
     private let result: Result<String, Error>
     private let lock = NSLock()
     private var _received: [(system: String, user: String)] = []
+    private var _lastSchema: String?
 
     init(_ text: String) { result = .success(text) }
     init(error: Error) { result = .failure(error) }
@@ -15,10 +16,26 @@ final class FakeLLMClient: LLMClient, @unchecked Sendable {
         lock.withLock { _received }
     }
 
+    var lastSchema: String? {
+        lock.withLock { _lastSchema }
+    }
+
     func complete(system: String, user: String) async throws -> String {
         lock.withLock { _received.append((system, user)) }
         return try result.get()
     }
+
+    func complete(system: String, user: String, jsonSchema: String?) async throws -> String {
+        lock.withLock { _lastSchema = jsonSchema }
+        return try await complete(system: system, user: user)
+    }
+}
+
+/// Implements only the two-argument method, so it relies on the protocol's default.
+struct PlainLLMClient: LLMClient {
+    let text: String
+
+    func complete(system: String, user: String) async throws -> String { text }
 }
 
 struct CompilerTests {
@@ -73,6 +90,20 @@ struct CompilerTests {
         #expect(client.received.count == 1)
         #expect(client.received.first?.system == expected.system)
         #expect(client.received.first?.user == expected.user)
+    }
+
+    @Test func compilerPassesSchemaToClient() async throws {
+        let entries = [entry("Fixed login bug", ticketRef: "ABC-1")]
+        let (_, client) = try await compile(entries, response(item("e1", minutes: 60, description: "Fixed login bug")))
+
+        let expected = PromptBuilder.build(entries: entries, day: day, settings: settings)
+        #expect(!expected.jsonSchema.isEmpty)
+        #expect(client.lastSchema == expected.jsonSchema)
+    }
+
+    @Test func defaultOverloadIgnoresSchema() async throws {
+        let client: any LLMClient = PlainLLMClient(text: "reply")
+        #expect(try await client.complete(system: "s", user: "u", jsonSchema: "{}") == "reply")
     }
 
     @Test func entryTicketOverridesModelTicket() async throws {

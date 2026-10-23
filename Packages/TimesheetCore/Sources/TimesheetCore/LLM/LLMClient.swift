@@ -2,6 +2,14 @@ import Foundation
 
 public protocol LLMClient: Sendable {
     func complete(system: String, user: String) async throws -> String
+    /// Clients that can constrain decoding force the reply to match `jsonSchema`; the others ignore it.
+    func complete(system: String, user: String, jsonSchema: String?) async throws -> String
+}
+
+extension LLMClient {
+    public func complete(system: String, user: String, jsonSchema: String?) async throws -> String {
+        try await complete(system: system, user: user)
+    }
 }
 
 public enum LLMError: Error, Equatable, Sendable {
