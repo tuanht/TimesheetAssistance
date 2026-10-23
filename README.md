@@ -22,7 +22,7 @@ Your notes never leave your Mac. The only exception is a custom endpoint that yo
 
     | RAM | Models |
     |-----|--------|
-    | 16 GB | Qwen3 4B, Llama 3.2 3B Instruct, Gemma 4 E4B |
+    | 16 GB | Qwen3.5 4B, Llama 3.2 3B Instruct, Gemma 4 E4B |
     | 32 GB | All of the above, plus Qwen3 8B, Qwen3 14B and Gemma 3 12B |
 
 - **Custom endpoint.**

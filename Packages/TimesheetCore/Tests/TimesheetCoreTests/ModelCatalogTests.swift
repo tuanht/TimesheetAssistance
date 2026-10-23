@@ -14,7 +14,7 @@ struct ModelCatalogTests {
 
     @Test func available16IsTheThreeSmallModels() {
         #expect(ModelCatalog.available(for: .gb16).map(\.id) == [
-            "mlx-community/Qwen3-4B-4bit",
+            "mlx-community/Qwen3.5-4B-MLX-4bit",
             "mlx-community/Llama-3.2-3B-Instruct-4bit",
             "mlx-community/gemma-4-e4b-it-4bit",
         ])
@@ -23,7 +23,7 @@ struct ModelCatalogTests {
     @Test func available32IsAllSix() {
         #expect(ModelCatalog.available(for: .gb32) == ModelCatalog.all)
         #expect(Set(ModelCatalog.all.map(\.id)) == [
-            "mlx-community/Qwen3-4B-4bit",
+            "mlx-community/Qwen3.5-4B-MLX-4bit",
             "mlx-community/Llama-3.2-3B-Instruct-4bit",
             "mlx-community/gemma-4-e4b-it-4bit",
             "mlx-community/Qwen3-8B-4bit",

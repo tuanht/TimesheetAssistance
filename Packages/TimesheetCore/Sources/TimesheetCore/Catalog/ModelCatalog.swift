@@ -38,8 +38,8 @@ public struct CatalogModel: Identifiable, Equatable, Sendable {
 /// The on-device models offered in Settings.
 public enum ModelCatalog {
     public static let all: [CatalogModel] = [
-        CatalogModel(id: "mlx-community/Qwen3-4B-4bit", displayName: "Qwen3 4B",
-                     tier: .gb16, approxGB: 2.5, runtime: .mlx),
+        CatalogModel(id: "mlx-community/Qwen3.5-4B-MLX-4bit", displayName: "Qwen3.5 4B",
+                     tier: .gb16, approxGB: 3, runtime: .mlx),
         CatalogModel(id: "mlx-community/Llama-3.2-3B-Instruct-4bit", displayName: "Llama 3.2 3B Instruct",
                      tier: .gb16, approxGB: 2, runtime: .mlx),
         CatalogModel(id: "mlx-community/gemma-4-e4b-it-4bit", displayName: "Gemma 4 E4B",

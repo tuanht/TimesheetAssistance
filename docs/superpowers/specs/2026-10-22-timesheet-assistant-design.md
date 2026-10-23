@@ -80,7 +80,7 @@ Why: writing the daily timesheet by hand from scattered notes is tedious. The ra
 ### Model catalog
 | Tier | Model | Approx. size |
 |------|-------|--------------|
-| 16 GB | Qwen3 4B 4-bit | ~2.5 GB |
+| 16 GB | Qwen3.5 4B 4-bit | ~3 GB |
 | 16 GB | Llama 3.2 3B Instruct 4-bit | ~2 GB |
 | 16 GB | Gemma 4 E4B 4-bit | ~3 GB |
 | 32 GB | Qwen3 8B 4-bit | ~5 GB |
