@@ -150,4 +150,19 @@ struct PromptBuilderTests {
     @Test func systemSaysDurationIsNotAClockTime() {
         #expect(PromptBuilder.system.contains("A duration such as 2h or 45 min is not a clock time."))
     }
+
+    @Test func overrideReplacesSystem() {
+        var settings = AppSettings.default
+        settings.systemPromptOverride = "Custom instructions."
+        let prompt = PromptBuilder.build(entries: [snapshot("x")], day: day, settings: settings)
+        #expect(prompt.system == "Custom instructions.")
+    }
+
+    @Test(arguments: [nil, "", "  \n"] as [String?])
+    func blankOverrideKeepsBuiltInSystem(_ override: String?) {
+        var settings = AppSettings.default
+        settings.systemPromptOverride = override
+        let prompt = PromptBuilder.build(entries: [snapshot("x")], day: day, settings: settings)
+        #expect(prompt.system == PromptBuilder.system)
+    }
 }

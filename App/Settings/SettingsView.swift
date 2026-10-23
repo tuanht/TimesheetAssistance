@@ -23,6 +23,9 @@ struct SettingsView: View {
             IntegrationsTab()
                 .tabItem { Label("Integrations", systemImage: "link") }
                 .tag("integrations")
+            DeveloperTab()
+                .tabItem { Label("Developer", systemImage: "hammer") }
+                .tag("developer")
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             VStack(alignment: .leading, spacing: 4) {

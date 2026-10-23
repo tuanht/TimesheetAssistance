@@ -48,10 +48,18 @@ public enum PromptBuilder {
         let schema = ResponseSchema.json(
             keys: keys, timedKeys: timedKeys,
             activityTypes: settings.activityTypes, classifications: settings.classifications)
-        return Prompt(system: system, user: user, keyMap: keyMap, jsonSchema: schema)
+        return Prompt(system: systemPrompt(settings), user: user, keyMap: keyMap, jsonSchema: schema)
     }
 
-    static let system = """
+    /// The user's override from Settings → Developer, unless it is blank.
+    private static func systemPrompt(_ settings: AppSettings) -> String {
+        guard let custom = settings.systemPromptOverride,
+              !custom.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else { return system }
+        return custom
+    }
+
+    public static let system = """
     You turn a developer's work entries for one day into timesheet items.
 
     Reply with a single JSON object and no other text, no markdown, no code fence:
