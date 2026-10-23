@@ -26,7 +26,7 @@ struct DeveloperTab: View {
                         session.update { $0.systemPromptOverride = nil }
                         text = PromptBuilder.system
                     }
-                    .disabled(saved == nil)
+                    .disabled(saved == nil && text == PromptBuilder.system)
                 }
             } footer: {
                 Text("Replaces the built-in instructions sent with every compile. Entries, lists and the reply schema are still added automatically.")
